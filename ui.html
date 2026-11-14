@@ -131,6 +131,14 @@ textarea { font: 14px/1.5 var(--ui); width: 100%; min-height: 260px; padding: 10
 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 a.btn { display: inline-block; text-decoration: none; }
 .ehelp .howto .quote { margin: 6px 0; }
+.updatebar { max-width: 1180px; margin: 12px auto 0; padding: 10px 14px; border-radius: 8px; background: var(--sun-soft); color: var(--ink); border: 1px solid var(--sun); }
+.updatebar[hidden] { display: none; }
+.flow { margin: 10px 0 14px; padding: 0; list-style: none; counter-reset: flow; display: grid; gap: 10px; }
+.flow li { counter-increment: flow; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 2px 10px; }
+.flow li::before { content: counter(flow); grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; background: var(--teal); color: var(--surface); font: 600 12.5px/22px var(--ui); text-align: center; margin-top: 1px; }
+.flow .how { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; }
+.flow .how select { width: auto; }
+.flow .muted { font-size: 14px; }
 .statusline { display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .followed { margin: 4px 0 12px; padding-left: 1.1em; }
 .pref { display: block; margin: 12px 0; }
@@ -283,6 +291,7 @@ input[type=checkbox] { width: auto; flex: none; margin: 0; accent-color: var(--t
   <button class="health" id="health" title="Status"><span class="dot" id="hdot"></span><span class="htext" id="htext">Checking…</span></button>
 </div></header>
 
+<div id="updatebar" class="updatebar" hidden></div>
 <div id="view"></div>
 <div id="pop" hidden></div>
 
@@ -453,6 +462,9 @@ function health(s) {
 let WAS_RUNNING = false, POLL = null;
 async function refreshStatus() {
   try { S.status = await api("/api/status"); } catch (e) { S.status = { down: true }; }
+  const old = !S.status.down && (S.status.api || 0) < NEEDS_API, bar = $("#updatebar");
+  bar.hidden = !old;
+  if (old) bar.innerHTML = `<b>Almost updated.</b> This page is new, but the app running in the background is still the old version, so some settings won't save. To finish, run the install line from the setup guide again. It keeps your settings and Telegram login.`;
   const [cls, text] = health(S.status);
   $("#hdot").className = "dot " + cls;
   $("#htext").textContent = text;
@@ -1017,10 +1029,12 @@ function renderDigestStep(s) {
   if (d.engine) {
     body = `<div class="choices">
         <label class="choice"><input type="radio" name="dmode" value="auto" checked><span><b>Automatically</b> (recommended)<br>
-          <span class="muted">${esc(d.engine_name)} writes a digest every 4 hours when there's something new, using your ${d.engine === "claude" ? "Claude" : "ChatGPT"} plan.</span></span></label>
+          <span class="muted">${esc(d.engine_name)} writes them on this Mac, using your ${d.engine === "claude" ? "Claude" : "ChatGPT"} plan.</span></span></label>
         <label class="choice"><input type="radio" name="dmode" value="manual"><span><b>Only when I ask</b><br>
           <span class="muted">Click “Write a digest now”, or ask your AI assistant.</span></span></label>
       </div>
+      <label class="opt" id="wschedrow"><span>How often</span><select id="wsched">${SCHEDULES.filter(([v]) => v !== "daily").map(([v, l]) => `<option value="${v}"${v === "h4" ? " selected" : ""}>${l}${v === "h4" ? " (recommended)" : ""}</option>`).join("")}</select></label>
+      <p class="muted">The app copies new messages from your groups to this Mac every 2 hours. Each digest sums up what's new since the previous one, and a digest is only written when there is something new.</p>
       ${d.found && d.found.claude && d.found.codex ? `<label class="opt"><span>Written by</span><select id="wengine">
           <option value="auto">Claude Code (automatic choice)</option><option value="claude">Claude Code, always</option><option value="codex">Codex</option></select></label>` : ""}
       <label class="check"><input type="checkbox" id="wnotify" checked> Notify me on this Mac when something needs my attention</label>
@@ -1033,6 +1047,7 @@ function renderDigestStep(s) {
       <div class="row"><button class="btn" id="recheck">Check again</button><button class="btn ghost" id="skip">Skip, I'll ask my AI for digests</button><span class="errc" id="werr"></span></div>`;
   }
   $("#view").innerHTML = wizardFrame(4, "How should digests be made?", "", body);
+  $$("input[name=dmode]").forEach(r => r.onchange = () => { const row = $("#wschedrow"); if (row) row.hidden = $("input[name=dmode]:checked").value !== "auto"; });
   on("recheck", async () => { await refreshStatus(); renderSetup(); });
   on("skip", async () => {
     try { await api("/api/settings", { digests_chosen: true, digest_mode: "manual" }); renderSetup(); } catch (e) { errBox("werr", e); }
@@ -1048,7 +1063,9 @@ function renderDigestStep(s) {
         await api("/api/preferences", { text: prefsText(p, document.createElement("div")) });
       }
       const eng = $("#wengine") ? $("#wengine").value : "auto";
-      await api("/api/settings", { digests_chosen: true, digest_mode: mode, digest_engine: eng, notify: $("#wnotify").checked ? "attention" : "off" });
+      const r = await api("/api/settings", { digests_chosen: true, digest_mode: mode, digest_engine: eng, notify: $("#wnotify").checked ? "attention" : "off",
+                                             ...(mode === "auto" ? scheduleSettings($("#wsched").value) : {}) });
+      if (!r.digests_chosen) throw new Error("The app running in the background is an older version and didn't save this. Run the install line from the setup guide again, then try once more.");
       await api("/api/digest/run", {});
       await refreshStatus();
       renderSetup();
@@ -1222,6 +1239,22 @@ function scheduleSettings(key) {
   if (key.startsWith("h")) return { digest_schedule: "every", digest_every_hours: +key.slice(1) };
   return { digest_schedule: key };
 }
+// how messages and digests relate, shown as the two steps they are
+function flowSteps(s, st, sel) {
+  const d = s.digest || {}, auto = st.digest_mode === "auto";
+  const last = s.last_export ? `Last done at ${timeOf(s.last_export)}${s.last_count != null ? `, ${s.last_count ? plural(s.last_count, "new message", "new messages") : "nothing new"}` : ""}. ` : "";
+  const how = (SCHEDULES.find(x => x[0] === scheduleKey(st)) || ["", "regularly"])[1].toLowerCase() + (st.digest_schedule === "daily" ? " at " + st.digest_daily_at : "");
+  const step2 = auto && d.engine
+    ? `<span><b>A digest is written from them</b> ${esc(how)}, when something's new, by ${esc(d.engine_name)}. <button class="link" data-goto="setup:digestset">Change</button></span>`
+    : auto ? `<span><b>A digest is written from them</b> once an AI tool is set up on this Mac. <button class="link" data-goto="setup:digestset">See Digests</button></span>`
+    : `<span><b>A digest is written from them</b> when you ask. <button class="link" data-goto="setup:digestset">Change</button></span>`;
+  return `<ol class="flow">
+    <li><span class="how"><b>New messages are copied to this Mac</b> every ${sel("fetch_every_minutes", [[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]])}</span>
+      <span class="muted">${last}You can read them under Messages.</span></li>
+    <li>${step2}
+      <span class="muted">Right before each digest the app copies the newest messages, so a digest never misses any. Each one covers ${st.digest_period === "last_24h" ? "the last 24 hours" : "what's new since the previous digest"}.</span></li>
+  </ol>`;
+}
 function statusSentence(s, st) {
   const d = s.digest || {};
   const every = (st.fetch_every_minutes || 120) >= 60 ? plural((st.fetch_every_minutes || 120) / 60, "hour", "hours") : `${st.fetch_every_minutes} minutes`;
@@ -1246,7 +1279,7 @@ function renderSettings(s) {
 
     <section class="panel"><h2>Status</h2>
       <p class="statusline"><span class="dot ${hc}"></span><span>${esc(ht)}.</span></p>
-      <p>${esc(statusSentence(s, st))}</p>
+      ${flowSteps(s, st, sel)}
       ${!s.background ? `<p class="errc">The app isn't running in the background, so it stops when it's closed. Run the install line again to fix this.</p>` : ""}
       ${s.last_error ? `<p class="errc">${esc(s.last_error)}</p>` : ""}
       ${d.last_ok === false && d.last_message ? `<p class="errc">${esc(d.last_message)}</p>` : ""}
@@ -1285,7 +1318,6 @@ function renderSettings(s) {
     <section class="panel" id="groupsset"><h2>Groups you follow</h2><div id="groups"><p class="muted">Loading…</p></div></section>
 
     <details class="panel advanced"${advOpen}><summary>Advanced</summary>
-      <label class="opt"><span>Check for new messages every</span>${sel("fetch_every_minutes", [[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]])}</label>
       <div class="row"><span>Get older messages from Telegram:</span>
         <select id="olderdays" class="inline-select"><option value="3">last 3 days</option><option value="7">last 7 days</option><option value="31">last month</option></select>
         <button class="btn ghost" id="exre">Get them</button></div>
@@ -1418,6 +1450,8 @@ function toggleTopic(g, tid, on) {
   else SEL[g.id] = { title: g.title, forum: g.forum, topics: cur.length === all.length ? "all" : cur };
   drawGroups();
 }
+
+const NEEDS_API = 4;   // matches API_VERSION in app.py
 
 // ---------- start ----------
 (async () => {

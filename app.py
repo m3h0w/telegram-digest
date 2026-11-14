@@ -34,6 +34,12 @@ from telethon.utils import get_display_name
 import export as core
 
 PORT = int(os.environ.get("TGD_PORT", "8765"))
+API_VERSION = 4          # the page checks this to spot an app that hasn't restarted after an update
+CODE_FILES = [os.path.abspath(__file__), os.path.abspath(core.__file__)]
+
+
+def code_stamp():
+    return tuple(os.path.getmtime(f) if os.path.exists(f) else 0 for f in CODE_FILES)
 UI = core.ROOT / "ui.html"
 DIGESTS = core.ROOT / "digests"
 PREFS = core.ROOT / "what-matters.md"
@@ -414,6 +420,7 @@ class Telegram:
         self.me = None
         self.exporting = False
         self.digesting = False
+        self.code_stamp = code_stamp()
         self.digest_phase = None
         self.last_result = None
         self.last_error = None
@@ -459,7 +466,7 @@ class Telegram:
             "fetch_every_minutes": fetch_every_s() // 60,
             "fetch_requested": FETCH_REQUEST.exists(),
             "background": os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS or os.getppid() == 1,
-            "exporting": self.exporting,
+            "exporting": self.exporting, "api": API_VERSION,
             "last_result": self.last_result, "last_error": self.last_error,
         }
         st_ = load_settings()
@@ -629,11 +636,25 @@ class Telegram:
             return
         await self.run_digest(auto=True)
 
+    async def _restart_if_updated(self):
+        """After an update replaces the program files, restart into the new version by itself."""
+        if code_stamp() == self.code_stamp or self.digesting or self.exporting:
+            return
+        log("Program files were updated; restarting to use the new version.")
+        try:
+            if self.client is not None:
+                await self.client.disconnect()
+        except Exception:
+            pass
+        sys.stdout.flush(); sys.stderr.flush()
+        os.execv(sys.executable, [sys.executable, CODE_FILES[0]] + sys.argv[1:])
+
     async def _scheduler(self):
         await asyncio.sleep(15)
         retry_at = 0.0
         while True:
             try:
+                await self._restart_if_updated()
                 check_new_digests()
                 requested = FETCH_REQUEST.exists()
                 last = core.last_export_time()
