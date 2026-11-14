@@ -10,7 +10,7 @@ PORT=8765
 
 echo "→ Python environment…"
 [ -x .venv/bin/python ] || python3 -m venv .venv
-.venv/bin/python -m pip install --quiet --upgrade pip telethon
+.venv/bin/python -m pip install --quiet --upgrade pip telethon certifi
 [ -f .env ] && chmod 600 .env
 
 echo "→ Starting the app in the background (it also starts when you log in)…"

@@ -39,6 +39,13 @@ SESSION = SECRET_DIR / "digest"  # Telethon adds ".session"
 SESSION_FILE = Path(str(SESSION) + ".session")
 
 
+def write_atomic(path, text):
+    """Write a file so readers never see it half-written."""
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def log(msg):
     print(f"{dt.datetime.now():%Y-%m-%d %H:%M:%S} {msg}", flush=True)
 
@@ -67,6 +74,27 @@ def save_env(api_id, api_hash):
             line = f"{key}={new.pop(key)}"
         out.append(line)
     out += [f"{k}={v}" for k, v in new.items()]
+    old = os.umask(0o077)
+    try:
+        ENV.write_text("\n".join(out) + "\n")
+    finally:
+        os.umask(old)
+    os.chmod(ENV, 0o600)
+
+
+def update_env(updates):
+    """Set (or, with None, remove) keys in .env, keeping everything else."""
+    lines = ENV.read_text().splitlines() if ENV.exists() else []
+    out, done = [], set()
+    for line in lines:
+        key = line.split("=", 1)[0].strip()
+        if key in updates:
+            done.add(key)
+            if updates[key] is None:
+                continue
+            line = f"{key}={updates[key]}"
+        out.append(line)
+    out += [f"{k}={v}" for k, v in updates.items() if k not in done and v is not None]
     old = os.umask(0o077)
     try:
         ENV.write_text("\n".join(out) + "\n")
@@ -115,7 +143,7 @@ def load_selection():
 
 
 def save_selection(sel):
-    SELECTION.write_text(json.dumps(sel, indent=1, ensure_ascii=False))
+    write_atomic(SELECTION, json.dumps(sel, indent=1, ensure_ascii=False))
 
 
 # ---------- state ----------
@@ -130,7 +158,7 @@ def load_state():
 
 
 def save_state(st):
-    STATE.write_text(json.dumps(st, indent=1))
+    write_atomic(STATE, json.dumps(st, indent=1))
 
 
 def last_export_time():

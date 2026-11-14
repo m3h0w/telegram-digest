@@ -126,6 +126,10 @@ textarea { font: 14px/1.5 var(--ui); width: 100%; min-height: 260px; padding: 10
 .quote { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; overflow-wrap: anywhere; user-select: all; }
 .quote.inline { display: inline; padding: 2px 6px; }
 .ehelp { margin: 4px 0 10px; }
+.howto ol.sub { padding-left: 1.2em; margin: 6px 0 10px; list-style: lower-alpha; }
+.howto ol.sub li { margin: 5px 0; }
+.mono { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+a.btn { display: inline-block; text-decoration: none; }
 .ehelp .howto .quote { margin: 6px 0; }
 .statusline { display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .followed { margin: 4px 0 12px; padding-left: 1.1em; }
@@ -918,7 +922,7 @@ document.addEventListener("change", e => {
 let GROUPS = null, SEL = null, TOPICS = {}, NEED_PW = false, SETTINGS = null, PICKER_OPEN = false, ORDER = [];
 const GUIDE_URL = "https://raw.githubusercontent.com/m3h0w/telegram-digest/main/AI-SETUP.md";
 const needsSetup = (s, st) => !s.keys || !s.authorized || !s.selected || !(st && st.onboarded);
-const wizardStep = s => !s.keys ? 1 : !s.authorized ? 2 : !s.selected ? 3 : 4;
+const wizardStep = s => !s.keys ? 1 : !s.authorized ? 2 : !s.selected ? 3 : !(SETTINGS && SETTINGS.digests_chosen) ? 4 : 5;
 const on = (id, fn) => { const b = $("#" + id); if (b) b.onclick = fn; };
 const errBox = (id, e) => { const el = $("#" + id); if (el) el.textContent = e ? e.message : ""; };
 function setTabLabel(s, st) { $(".tabs button[data-tab=setup]").textContent = needsSetup(s, st) ? "Setup" : "Settings"; }
@@ -934,7 +938,7 @@ async function renderSetup() {
 
 // ----- guided setup -----
 function wizardFrame(step, title, intro, body) {
-  const names = ["Connect Telegram", "Log in", "Choose groups", "Digests"];
+  const names = ["Connect Telegram", "Log in", "Choose groups", "Digests", "Phone"];
   return `<div class="layout single"><main class="main wizard">
     <ol class="wsteps">${names.map((n, i) => `<li class="${i + 1 < step ? "done" : i + 1 === step ? "now" : ""}">${esc(n)}</li>`).join("")}</ol>
     <header class="ph"><h1>${esc(title)}</h1>${intro ? `<p class="sub">${intro}</p>` : ""}</header>
@@ -991,9 +995,20 @@ function renderWizard(s) {
         renderSetup();
       },
     });
-  } else {
+  } else if (step === 4) {
     renderDigestStep(s);
+  } else {
+    renderPhoneStep(s);
   }
+}
+
+function renderPhoneStep(s) {
+  $("#view").innerHTML = wizardFrame(5, "Get digests on your phone too?",
+    "Optional. Your digests can arrive as Telegram messages from your own private bot, so you see them on your phone wherever you are.",
+    `<div id="botbox"></div>
+     <div class="row wizard-end">${S.status.bot && S.status.bot.connected ? `<button class="btn" id="wdone">Finish</button>` : `<button class="btn ghost" id="wdone">Skip for now</button><span class="muted">You can set this up later in Settings.</span>`}</div>`);
+  botPanel($("#botbox"), { open: true, onConnected: () => renderPhoneStep(S.status) });
+  on("wdone", async () => { stopBotPoll(); await api("/api/settings", { onboarded: true }); SETTINGS = await api("/api/settings"); setTabLabel(S.status, SETTINGS); show("digest"); });
 }
 
 function renderDigestStep(s) {
@@ -1012,7 +1027,7 @@ function renderDigestStep(s) {
       <label class="field pref"><span class="plabel">Anything that should always need your attention? (optional)</span>
         <textarea id="walways" rows="3" placeholder="One per line, for example: kitchen shifts, the sauna, anything from Rosaura"></textarea></label>
       <p class="muted">You can change all of this any time in Settings.</p>
-      <div class="row"><button class="btn" id="finish">Finish and write my first digest</button><span class="errc" id="werr"></span></div>`;
+      <div class="row"><button class="btn" id="finish">Continue and write my first digest</button><span class="errc" id="werr"></span></div>`;
   } else {
     body = `${engineHelp()}
       <div class="row"><button class="btn" id="recheck">Check again</button><button class="btn ghost" id="skip">Skip, I'll ask my AI for digests</button><span class="errc" id="werr"></span></div>`;
@@ -1020,7 +1035,7 @@ function renderDigestStep(s) {
   $("#view").innerHTML = wizardFrame(4, "How should digests be made?", "", body);
   on("recheck", async () => { await refreshStatus(); renderSetup(); });
   on("skip", async () => {
-    try { await api("/api/settings", { onboarded: true, digest_mode: "manual" }); show("digest"); } catch (e) { errBox("werr", e); }
+    try { await api("/api/settings", { digests_chosen: true, digest_mode: "manual" }); renderSetup(); } catch (e) { errBox("werr", e); }
   });
   on("finish", async () => {
     const mode = $("input[name=dmode]:checked").value;
@@ -1033,10 +1048,10 @@ function renderDigestStep(s) {
         await api("/api/preferences", { text: prefsText(p, document.createElement("div")) });
       }
       const eng = $("#wengine") ? $("#wengine").value : "auto";
-      await api("/api/settings", { onboarded: true, digest_mode: mode, digest_engine: eng, notify: $("#wnotify").checked ? "attention" : "off" });
+      await api("/api/settings", { digests_chosen: true, digest_mode: mode, digest_engine: eng, notify: $("#wnotify").checked ? "attention" : "off" });
       await api("/api/digest/run", {});
       await refreshStatus();
-      show("digest");
+      renderSetup();
     } catch (e) { errBox("werr", e); }
   });
 }
@@ -1092,6 +1107,19 @@ function engineSelect(st, found) {
   return `<select data-set="digest_engine">${opts.map(([v, l]) => `<option value="${v}"${st.digest_engine === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
 }
 
+// model and effort for whichever tool writes the digests; empty = the tool's own default
+function modelOptions(st, kind, sel) {
+  if (kind === "claude") return `
+    <label class="opt"><span>Claude model</span>${sel("claude_model", [["", "Claude Code's default"], ["sonnet", "Sonnet"], ["opus", "Opus"], ["haiku", "Haiku (fastest)"], ["fable", "Fable"]])}</label>
+    <label class="opt"><span>Thinking effort</span>${sel("claude_effort", [["", "Claude Code's default"], ["low", "Low (fastest)"], ["medium", "Medium"], ["high", "High"], ["xhigh", "Extra high"], ["max", "Max (slowest)"]])}</label>
+    <p class="muted small">Leave these on the default unless digests are slow or miss things. Bigger models and more effort use up your Claude plan's limits faster.</p>`;
+  if (kind === "codex") return `
+    <label class="opt"><span>Codex model</span><input type="text" data-set="codex_model" value="${esc(st.codex_model || "")}" placeholder="Codex's default" spellcheck="false" autocomplete="off"></label>
+    <label class="opt"><span>Thinking effort</span>${sel("codex_effort", [["", "Codex's default"], ["minimal", "Minimal (fastest)"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["xhigh", "Extra high (slowest)"]])}</label>
+    <p class="muted small">Leave these on the default unless digests are slow or miss things. To pick a model, type its name as Codex shows it, for example after typing /model in Codex. More effort uses up your ChatGPT plan's limits faster.</p>`;
+  return "";
+}
+
 // ----- help installing Claude Code or Codex -----
 const INSTALL = {
   claude: { tool: "Claude Code", plan: "Claude", line: "curl -fsSL https://claude.ai/install.sh | bash", signin: "claude",
@@ -1116,6 +1144,74 @@ function engineHelp() {
       <p class="muted small">${esc(i.note)} If Check again still doesn't find it, run the Telegram Digest install line once more, then check again.</p>` : ""}
     <p class="muted small">Or let your AI assistant do it: “Set up automatic digests for Telegram Digest on my Mac, following step 6 of ${esc(GUIDE_URL)}”</p>
   </div>`;
+}
+
+// ----- digests to the phone via their own Telegram bot -----
+let BOT_STAGE = null, BOT_INFO = null, BOT_POLL = null;
+function stopBotPoll() { if (BOT_POLL) { clearInterval(BOT_POLL); BOT_POLL = null; } }
+
+function botPanel(box, opt = {}) {
+  stopBotPoll();
+  const b = (S.status && S.status.bot) || {};
+  const policySel = `<select data-set="phone_send">${[["all", "Every digest"], ["attention", "Only when something needs attention"], ["off", "Don't send"]]
+    .map(([v, l]) => `<option value="${v}"${(b.policy || "all") === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+  if (b.connected) {
+    box.innerHTML = `<p class="okc">Connected. Digests arrive in Telegram from <b>@${esc(b.username || "your bot")}</b>, on your phone and everywhere else you use Telegram.</p>
+      <label class="opt"><span>Send</span>${policySel}</label>
+      <div class="row"><button class="btn ghost" id="bottest">Send a test message</button><button class="btn ghost" id="botlatest">Send me the latest digest</button>
+        <button class="link" id="botoff">Disconnect</button><span class="muted" id="botmsg"></span></div>`;
+    const msg = t => { $("#botmsg").textContent = t; };
+    on("bottest", async () => { try { await api("/api/bot/test", {}); msg("Sent. Check Telegram."); } catch (e) { msg(e.message); } });
+    on("botlatest", async () => { try { await api("/api/bot/latest", {}); msg("Sent. Check Telegram."); } catch (e) { msg(e.message); } });
+    on("botoff", async () => { await api("/api/bot/disconnect", {}); BOT_STAGE = null; await refreshStatus(); botPanel(box, opt); });
+    $$("[data-set]", box).forEach(el => el.onchange = async () => { await api("/api/settings", { [el.dataset.set]: el.value }); await refreshStatus(); });
+    return;
+  }
+  if (BOT_STAGE === "hello" || b.pending) {
+    const uname = (BOT_INFO && BOT_INFO.username) || b.username;
+    box.innerHTML = `<ol class="howto" start="2">
+        <li><b>Say hello to your bot</b>, so it's allowed to message you. Click the button, and in Telegram press <b>Start</b> at the bottom of the chat.
+          <div class="row"><a class="btn" id="botopen" href="${esc((BOT_INFO && BOT_INFO.link) || "#")}" target="_blank" rel="noopener">Open @${esc(uname || "your bot")} in Telegram</a></div>
+          <div class="working" id="botwait"><span class="spin"></span><span>Waiting for you to press Start…</span></div>
+        </li></ol>
+      <div class="row"><button class="link" id="botcheck">I pressed Start</button><button class="link" id="botback">Use a different bot</button><span class="errc" id="boterr"></span></div>`;
+    const check = async () => {
+      try {
+        const r = await api("/api/bot/check", {});
+        if (r.connected) { stopBotPoll(); BOT_STAGE = null; await refreshStatus(); botPanel(box, opt); if (opt.onConnected) opt.onConnected(); }
+        else if (r.link) { BOT_INFO = { ...(BOT_INFO || {}), link: r.link }; const a = $("#botopen"); if (a) a.href = r.link; }
+      } catch (e) { const el = $("#boterr"); if (el) el.textContent = e.message; }
+    };
+    if (!BOT_INFO || !BOT_INFO.link) check();
+    on("botcheck", check);
+    on("botback", async () => { await api("/api/bot/disconnect", {}); BOT_STAGE = null; BOT_INFO = null; await refreshStatus(); botPanel(box, { ...opt, open: true }); });
+    let tries = 0;
+    BOT_POLL = setInterval(() => { if (!document.body.contains(box) || ++tries > 60) { stopBotPoll(); const w = $("#botwait"); if (w) w.innerHTML = `<span class="muted">Still waiting. After pressing Start, click “I pressed Start”.</span>`; return; } check(); }, 3000);
+    return;
+  }
+  if (!opt.open) {
+    box.innerHTML = `<p>Get each digest as a Telegram message from your own private bot: on your phone, and everywhere else you use Telegram. Every point links straight to the original messages. It takes about two minutes.</p>
+      <div class="row"><button class="btn ghost" id="botstart">Set it up</button></div>`;
+    on("botstart", () => botPanel(box, { ...opt, open: true }));
+    return;
+  }
+  box.innerHTML = `<ol class="howto">
+      <li><b>Create your bot.</b> It's free and only talks to you.
+        <ol class="sub">
+          <li>Open <a href="https://t.me/BotFather" target="_blank" rel="noopener"><b>BotFather</b></a> in Telegram. It's Telegram's official tool for making bots and has a blue tick.</li>
+          <li>Press <b>Start</b>, then send <b>/newbot</b>.</li>
+          <li>When it asks for a name, send: <b>My Digest</b></li>
+          <li>When it asks for a username, send a name ending in “bot”, for example <b>mydigest_2026_bot</b>. If it's taken, add a few numbers.</li>
+          <li>BotFather replies with a long <b>token</b> that looks like <span class="mono">123456789:AAH…</span>. Tap it to copy it, and paste it here:</li>
+        </ol>
+        <div class="row"><input type="password" id="bottoken" placeholder="Paste the token here" autocomplete="off"><button class="btn" id="botsave">Connect</button></div>
+        <p class="errc" id="boterr"></p>
+      </li></ol>`;
+  on("botsave", async () => {
+    $("#boterr").textContent = "";
+    try { BOT_INFO = await api("/api/bot/token", { token: $("#bottoken").value }); BOT_STAGE = "hello"; await refreshStatus(); botPanel(box, opt); }
+    catch (e) { $("#boterr").textContent = e.message; }
+  });
 }
 
 // ----- settings -----
@@ -1143,6 +1239,8 @@ function renderSettings(s) {
   const sel = (key, opts, val) => `<select data-set="${key}">${opts.map(([v, l]) => `<option value="${v}"${String(val ?? st[key]) === String(v) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   const found = d.found || {}, foundNames = Object.entries(found).filter(([, v]) => v).map(([k]) => k === "claude" ? "Claude Code" : "Codex");
   const auto = st.digest_mode === "auto";
+  const wasOpen = sel => document.querySelector(sel)?.open ? " open" : "";   // keep sections open across redraws
+  const moreOpen = wasOpen("#digestset details.more"), advOpen = wasOpen("details.panel.advanced");
   $("#view").innerHTML = `<div class="layout single"><main class="main">
     <header class="ph"><h1>Settings</h1></header>
 
@@ -1169,11 +1267,14 @@ function renderSettings(s) {
       ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on this Mac yet. Choose another option, or install it as shown below.</p>` : ""}
       ${!d.engine && auto ? `<p class="errc">Automatic digests are on, but this Mac can't write them yet.</p>${engineHelp()}
         <div class="row"><button class="btn" id="recheck2">Check again</button></div>` : ""}
-      <details class="more"><summary>More options</summary>
+      <details class="more"${moreOpen}><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
         <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
+        ${modelOptions(st, st.digest_engine !== "auto" ? st.digest_engine : d.engine, sel)}
       </details>
     </section>
+
+    <section class="panel" id="phone"><h2>Digests on your phone</h2><div id="botbox"></div></section>
 
     <section class="panel" id="prefs"><h2>What needs your attention</h2>
       <p class="muted">In your own words. The digest uses this to decide what goes under “Needs attention”. It also learns from the small buttons at the end of each digest point: the circle means “not for me”, the flag means “flag things like this”.</p>
@@ -1183,7 +1284,7 @@ function renderSettings(s) {
 
     <section class="panel" id="groupsset"><h2>Groups you follow</h2><div id="groups"><p class="muted">Loading…</p></div></section>
 
-    <details class="panel advanced"><summary>Advanced</summary>
+    <details class="panel advanced"${advOpen}><summary>Advanced</summary>
       <label class="opt"><span>Check for new messages every</span>${sel("fetch_every_minutes", [[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]])}</label>
       <div class="row"><span>Get older messages from Telegram:</span>
         <select id="olderdays" class="inline-select"><option value="3">last 3 days</option><option value="7">last 7 days</option><option value="31">last month</option></select>
@@ -1225,6 +1326,8 @@ function renderSettings(s) {
     try { await api("/api/preferences", { text: prefsText(PREFS, $("#prefsform")) }); $("#prefsmsg").textContent = "Saved."; }
     catch (e) { $("#prefsmsg").innerHTML = `<span class="errc">${esc(e.message)}</span>`; }
   });
+  // phone
+  botPanel($("#botbox"));
   // groups
   drawFollowed();
   // keys

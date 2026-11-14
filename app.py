@@ -8,15 +8,21 @@ Listens on 127.0.0.1 only.
 """
 import asyncio
 import datetime as dt
+import html
 import json
 import os
 import re
+import secrets
 import shutil
+import ssl
 import subprocess
 import sys
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -64,6 +70,12 @@ DEFAULTS = {
     "digest_daily_at": "08:00",
     "digest_period": "since_last",   # since_last | last_24h
     "digest_min_new": 1,
+    "phone_send": "all",             # all | attention | off   (Telegram bot)
+    "digests_chosen": False,         # guided setup: digest step done
+    "claude_model": "",              # "" = Claude Code's own default
+    "claude_effort": "",
+    "codex_model": "",               # "" = Codex's own default
+    "codex_effort": "",
 }
 CHOICES = {
     "fetch_every_minutes": FETCH_CHOICES,
@@ -74,6 +86,10 @@ CHOICES = {
     "digest_every_hours": (1, 2, 4, 8, 12),
     "digest_period": ("since_last", "last_24h"),
     "digest_min_new": (1, 3, 5, 10, 20),
+    "phone_send": ("all", "attention", "off"),
+    "claude_model": ("", "sonnet", "opus", "haiku", "fable"),
+    "claude_effort": ("", "low", "medium", "high", "xhigh", "max"),
+    "codex_effort": ("", "minimal", "low", "medium", "high", "xhigh"),
 }
 
 
@@ -92,7 +108,7 @@ def load_settings():
 
 
 def save_settings(st):
-    SETTINGS.write_text(json.dumps(st, indent=1))
+    core.write_atomic(SETTINGS, json.dumps(st, indent=1))
 
 
 def fetch_every_s():
@@ -169,7 +185,7 @@ def load_dstate():
 
 
 def save_dstate(ds):
-    DSTATE.write_text(json.dumps(ds, indent=1))
+    core.write_atomic(DSTATE, json.dumps(ds, indent=1))
 
 
 def newest_digest_to():
@@ -213,13 +229,36 @@ Follow HOW-TO-DIGEST.md in this folder exactly, with these specifics:
 - Only read exports/, .state.json, what-matters.md, HOW-TO-DIGEST.md and digests/. Only write in digests/ and what-matters.md."""
 
 
+def model_flags(kind, st):
+    """Optional model and effort choices; empty means the tool's own default."""
+    if kind == "claude":
+        m, e = st.get("claude_model"), st.get("claude_effort")
+        return (["--model", m] if m else []) + (["--effort", e] if e else [])
+    m, e = st.get("codex_model"), st.get("codex_effort")
+    return (["-m", m] if m else []) + (["-c", f'model_reasoning_effort="{e}"'] if e else [])
+
+
+OLD_TOOL = re.compile(r"unknown option|unrecognized|unexpected argument|unknown argument", re.I)
+
+
 def run_engine(kind, path, start, end):
     prompt = DIGEST_PROMPT.format(start=start.isoformat(timespec="seconds"), end=end.isoformat(timespec="seconds"))
+    extra = model_flags(kind, load_settings())
+    code, out, err = _run_engine(kind, path, prompt, extra)
+    if code != 0 and extra and OLD_TOOL.search(err + out):
+        # an older Claude Code / Codex that doesn't know these options: run with its defaults
+        code, out, err = _run_engine(kind, path, prompt, [])
+        if code == 0:
+            out += f"\n(Your {ENGINE_NAMES[kind]} is too old for the chosen model or effort, so it used its defaults. Updating it fixes this.)"
+    return code, out, err
+
+
+def _run_engine(kind, path, prompt, extra):
     if kind == "claude":
         cmd = [path, "-p", prompt, "--permission-mode", "acceptEdits",
-               "--allowedTools", "Read,Write,Edit,Glob,Grep", "--output-format", "text"]
+               "--allowedTools", "Read,Write,Edit,Glob,Grep", "--output-format", "text"] + extra
     else:
-        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never", prompt]
+        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never"] + extra + [prompt]
     env = dict(os.environ, PATH=tool_path())
     env.pop("ANTHROPIC_API_KEY", None)   # use the person's subscription, not a pay-as-you-go key
     env.pop("OPENAI_API_KEY", None)
@@ -232,7 +271,7 @@ def run_engine(kind, path, start, end):
     except Exception as e:
         out, err, code = "", str(e), -1
     with (core.ROOT / "logs" / "digest.log").open("a", encoding="utf-8") as fh:
-        fh.write(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M:%S} {ENGINE_NAMES[kind]} exit {code}\n{out[-4000:]}\n{err[-4000:]}\n")
+        fh.write(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M:%S} {ENGINE_NAMES[kind]} {' '.join(extra)} exit {code}\n{out[-4000:]}\n{err[-4000:]}\n")
     return code, out, err
 
 
@@ -242,6 +281,126 @@ def last_line(*texts):
         if lines:
             return lines[-1][:300]
     return ""
+
+
+# ---------- digests to the person's phone through their own Telegram bot ----------
+
+try:
+    import certifi
+    SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    SSL_CTX = ssl.create_default_context()
+BOT_LINK = {}   # pending link: {"code": ..., "username": ...}
+
+
+def bot_call(token, method, **params):
+    data = urllib.parse.urlencode({k: (json.dumps(v) if isinstance(v, (list, dict)) else v) for k, v in params.items()}).encode()
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}", data=data)
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=SSL_CTX) as r:
+            res = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            res = json.loads(e.read())
+        except Exception:
+            res = {"ok": False, "description": f"HTTP {e.code}"}
+    except Exception as e:
+        raise UserError(f"Couldn't reach Telegram: {e}")
+    if not res.get("ok"):
+        desc = res.get("description") or "Telegram didn't accept that."
+        if "Unauthorized" in desc or "Not Found" in desc:
+            desc = "Telegram doesn't recognise that token. Copy it again from BotFather's message."
+        raise UserError(desc)
+    return res["result"]
+
+
+def bot_config():
+    cfg = core.load_env()
+    return cfg.get("BOT_TOKEN"), cfg.get("BOT_CHAT_ID"), cfg.get("BOT_USERNAME")
+
+
+def digest_to_telegram(d):
+    """Format a digest as one or more Telegram HTML messages."""
+    try:
+        start = dt.datetime.fromisoformat(d["from"])
+        end = dt.datetime.fromisoformat(d["to"])
+    except Exception:
+        start = end = None
+    msgs = {}
+    if start:
+        for m in core.read_messages(start - dt.timedelta(days=1), end + dt.timedelta(minutes=1)):
+            msgs[(str(m["group_id"]), m["id"])] = m
+    h = lambda t: html.escape(str(t), quote=False)
+    rich = lambda t: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", h(t))
+
+    def refs(gid, ids):
+        parts, last = [], None
+        for i in ids or []:
+            m = msgs.get((str(gid), i))
+            if m:
+                who = m["sender"].split()[0] if m["sender"] else "?"
+                label = (who + " " if m["sender"] != last else "") + m["date"][11:16]
+                last, link = m["sender"], m["link"]
+            else:
+                label, link = f"#{i}", f"https://t.me/c/{str(gid).replace('-100', '', 1)}/{i}"
+            parts.append(f'<a href="{html.escape(link)}">{h(label)}</a>')
+        return ("  " + ", ".join(parts)) if parts else ""
+
+    when = ""
+    if start:
+        f, t = start.astimezone(), end.astimezone()
+        when = (f"{f:%a %H:%M}–{t:%H:%M}" if f.date() == t.date() else f"{f:%a %H:%M} to {t:%a %H:%M}")
+    blocks = [f"<b>{h(d.get('title') or 'Telegram digest')}</b>\n{h(when)}"]
+    groups = d.get("groups") or []
+    for g in groups:
+        gid = g.get("group_id")
+        if len(groups) > 1:
+            blocks.append(f"<b><u>{h(g.get('title') or '')}</u></b>")
+        if g.get("highlights"):
+            blocks.append("<b>Needs attention</b>\n" + "\n".join(f"• {rich(b.get('text', ''))}{refs(gid, b.get('refs'))}" for b in g["highlights"]))
+        for tp in g.get("topics") or []:
+            if tp.get("bullets"):
+                blocks.append(f"<b>{h(tp.get('topic') or '')}</b>\n" + "\n".join(f"• {rich(b.get('text', ''))}{refs(gid, b.get('refs'))}" for b in tp["bullets"]))
+    chunks, cur = [], ""
+    for b in blocks:
+        if len(b) > 3800:
+            b = b[:3790] + "…"
+        if cur and len(cur) + len(b) + 2 > 3900:
+            chunks.append(cur)
+            cur = b
+        else:
+            cur = cur + "\n\n" + b if cur else b
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def send_digest_to_phone(d, force=False):
+    token, chat, _ = bot_config()
+    if not (token and chat):
+        return False
+    if not force and not phone_wants(d, load_settings()):
+        return False
+    for text in digest_to_telegram(d):
+        bot_call(token, "sendMessage", chat_id=chat, text=text, parse_mode="HTML", disable_web_page_preview="true")
+    return True
+
+
+def phone_wants(d, st):
+    policy = st.get("phone_send", "all")
+    has_att = any(g.get("highlights") for g in d.get("groups") or [])
+    return policy == "all" or (policy == "attention" and has_att)
+
+
+def send_digest_in_background(d, st):
+    if not phone_wants(d, st):    # decided here, so the thread never re-reads settings
+        return
+    def run():
+        try:
+            send_digest_to_phone(d, force=True)
+        except Exception:
+            log(traceback.format_exc())
+    threading.Thread(target=run, daemon=True).start()
 
 
 class Telegram:
@@ -306,6 +465,9 @@ class Telegram:
         st_ = load_settings()
         kind, _ = pick_engine(st_)
         ds = load_dstate()
+        token, chat, uname = bot_config()
+        out["bot"] = {"connected": bool(token and chat), "username": uname, "pending": bool(token and not chat),
+                      "policy": st_["phone_send"]}
         out["digest"] = {
             "mode": st_["digest_mode"], "engine": kind, "engine_name": ENGINE_NAMES.get(kind),
             "found": {k: bool(v) for k, v in find_engines().items()},
@@ -534,7 +696,9 @@ def check_new_digests():
     fresh = [(n, d) for n, d in items if n not in known]
     if not fresh:
         return
-    if known and st.get("notify") != "off":   # don't notify for digests that existed before the first check
+    if known:   # don't send digests that existed before the first check
+        send_digest_in_background(fresh[0][1], st)
+    if known and st.get("notify") != "off":
         name, d = fresh[0]
         att = [h.get("text", "") for g in d.get("groups") or [] for h in (g.get("highlights") or [])]
         if att or st.get("notify") == "all":
@@ -638,6 +802,11 @@ class Handler(BaseHTTPRequestHandler):
             "/api/settings": lambda: self._save_settings(body),
             "/api/seen": lambda: self._seen(body),
             "/api/digest/run": lambda: self._run_digest(body),
+            "/api/bot/token": lambda: self._bot_token(body),
+            "/api/bot/check": lambda: self._bot_check(),
+            "/api/bot/test": lambda: self._bot_test(),
+            "/api/bot/latest": lambda: self._bot_latest(),
+            "/api/bot/disconnect": lambda: self._bot_disconnect(),
         }
         if p in routes:
             return self._run(routes[p])
@@ -650,6 +819,63 @@ class Handler(BaseHTTPRequestHandler):
             raise UserError("api_id should be a number and api_hash 32 hex characters.")
         core.save_env(api_id, api_hash)
         TG.call(TG.reset())
+        return {"ok": True}
+
+    def _bot_token(self, body):
+        token = re.sub(r"\s+", "", str(body.get("token", "")))
+        if not re.fullmatch(r"\d{5,}:[A-Za-z0-9_-]{30,}", token):
+            raise UserError("That doesn't look like a bot token. It looks like 123456789:AAH… and is in BotFather's message after you create the bot.")
+        me = bot_call(token, "getMe")
+        core.update_env({"BOT_TOKEN": token, "BOT_USERNAME": me.get("username"), "BOT_CHAT_ID": None})
+        BOT_LINK.update(code=secrets.token_urlsafe(9).replace("-", "x").replace("_", "y"), username=me.get("username"))
+        return {"username": me.get("username"), "link": f"https://t.me/{me.get('username')}?start={BOT_LINK['code']}"}
+
+    def _bot_link(self):
+        token, chat, uname = bot_config()
+        if not token:
+            raise UserError("Paste your bot's token first.")
+        if not BOT_LINK.get("code"):
+            BOT_LINK.update(code=secrets.token_urlsafe(9).replace("-", "x").replace("_", "y"), username=uname)
+        return token
+
+    def _bot_check(self):
+        token = self._bot_link()
+        updates = bot_call(token, "getUpdates", timeout=0, allowed_updates=["message"])
+        found, last = None, None
+        for u in updates:
+            last = u["update_id"]
+            m = u.get("message") or {}
+            if m.get("chat", {}).get("type") == "private" and (m.get("text") or "").strip() == f"/start {BOT_LINK['code']}":
+                found = m
+        if last is not None:
+            bot_call(token, "getUpdates", offset=last + 1, timeout=0)   # mark them as read
+        if not found:
+            return {"connected": False, "link": f"https://t.me/{BOT_LINK['username']}?start={BOT_LINK['code']}"}
+        core.update_env({"BOT_CHAT_ID": str(found["chat"]["id"])})
+        BOT_LINK.clear()
+        name = (found.get("from") or {}).get("first_name") or "there"
+        bot_call(token, "sendMessage", chat_id=found["chat"]["id"],
+                 text=f"Hi {name}! This is your Telegram digest. New digests will arrive here, with links straight to the original messages.")
+        return {"connected": True}
+
+    def _bot_test(self):
+        token, chat, _ = bot_config()
+        if not (token and chat):
+            raise UserError("Connect your bot first.")
+        bot_call(token, "sendMessage", chat_id=chat, text="Test from your Telegram digest: it works.")
+        return {"ok": True}
+
+    def _bot_latest(self):
+        items = _read_digests()
+        if not items:
+            raise UserError("There's no digest yet.")
+        if not send_digest_to_phone(items[0][1], force=True):
+            raise UserError("Connect your bot first.")
+        return {"ok": True}
+
+    def _bot_disconnect(self):
+        core.update_env({"BOT_TOKEN": None, "BOT_CHAT_ID": None, "BOT_USERNAME": None})
+        BOT_LINK.clear()
         return {"ok": True}
 
     def _days(self, v):
@@ -683,8 +909,13 @@ class Handler(BaseHTTPRequestHandler):
                 if value not in CHOICES[key]:
                     raise UserError(f"Pick one of the offered options for {key}.")
                 st[key] = value
-            elif key == "onboarded":
+            elif key in ("onboarded", "digests_chosen"):
                 st[key] = bool(value)
+            elif key == "codex_model":
+                value = str(value).strip()
+                if not re.fullmatch(r"[A-Za-z0-9._:/-]{0,60}", value):
+                    raise UserError("That doesn't look like a model name.")
+                st[key] = value
             elif key == "digest_daily_at":
                 if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(value)):
                     raise UserError("Use a time like 08:00.")

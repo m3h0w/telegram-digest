@@ -36,9 +36,13 @@ Then do everything else in the browser:
   a Mac notification when one arrives. They're written either automatically by the app
   using Claude Code or Codex on your own plan (no API keys), or by your AI assistant when
   you ask (instructions for it are in `HOW-TO-DIGEST.md`).
+- **Digests on your phone**: optional; each digest arrives as a Telegram message from your
+  own private bot (set up in two minutes from Settings), with links to the original messages.
 - **Settings** (Setup tab), with defaults: fetch every 2 hours; digests automatic, every 4
   hours if anything is new, covering everything since the previous digest; notify when
-  something needs attention. `what-matters.md` teaches the digest what needs your attention.
+  something needs attention; written by whichever of Claude Code or Codex is installed,
+  with that tool's default model and effort (both changeable under Digests → More options).
+  `what-matters.md` teaches the digest what needs your attention.
 
 ## Files
 

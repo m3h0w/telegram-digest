@@ -33,8 +33,8 @@ with links back to the original messages.
 4. When it finishes, the browser opens **http://localhost:8765**. If macOS shows
    "Background Items Added", that's this app; it starts automatically when they log in.
    Ask them to bookmark the page.
-5. The page opens on a short guided setup with four steps (Connect Telegram, Log in,
-   Choose groups, Digests). Steps 2 to 6 below match it; help them through it there.
+5. The page opens on a short guided setup with five steps (Connect Telegram, Log in,
+   Choose groups, Digests, Phone). Steps 2 to 7 below match it; help them through it there.
 
 ## Step 2: Create their Telegram API keys (my.telegram.org)
 
@@ -127,7 +127,26 @@ attention. All of it can be changed in **Settings → Digests**, including "Only
 If they'd rather not install anything, skip this step: you can write digests yourself
 when they ask (next step).
 
-## Step 7: Asking for a digest
+## Step 7: Digests on their phone (optional, recommended)
+
+Digests can arrive as Telegram messages from their own private bot, so they see them on
+their phone. The app's Setup shows this as the last step (and later in **Settings →
+Digests on your phone**). You can't create the bot for them, because it happens in their
+Telegram, but walk them through it:
+
+1. In Telegram, open **@BotFather** (Telegram's official bot maker, with a blue tick).
+2. Press **Start**, send `/newbot`, send a name (e.g. *My Digest*), then a username that
+   ends in `bot` (e.g. *mydigest_2026_bot*; add numbers if it's taken).
+3. BotFather replies with a **token** like `123456789:AAH…`. They copy it and paste it into
+   the app, then click **Connect**.
+4. The app shows **Open @theirbot in Telegram**. They click it and press **Start**. The app
+   notices by itself and the bot says hi.
+
+The bot only ever messages them; their own account still never sends anything. By default
+every digest is sent; in Settings they can choose "Only when something needs attention" or
+turn it off. If they ever lose the token, BotFather's `/mybots` shows it again.
+
+## Step 8: Asking for a digest
 
 With automatic digests they don't need to do anything. They can also ask you any time:
 *"Give me my Telegram digest."* Then you:
