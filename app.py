@@ -255,6 +255,7 @@ class Telegram:
         self.me = None
         self.exporting = False
         self.digesting = False
+        self.digest_phase = None
         self.last_result = None
         self.last_error = None
         self.submit(self._scheduler())
@@ -308,7 +309,7 @@ class Telegram:
         out["digest"] = {
             "mode": st_["digest_mode"], "engine": kind, "engine_name": ENGINE_NAMES.get(kind),
             "found": {k: bool(v) for k, v in find_engines().items()},
-            "running": self.digesting, "last_run": ds.get("last_run"), "last_ok": ds.get("last_ok"),
+            "running": self.digesting, "phase": self.digest_phase, "last_run": ds.get("last_run"), "last_ok": ds.get("last_ok"),
             "last_message": ds.get("last_message"),
         }
         if out["keys"]:
@@ -396,6 +397,24 @@ class Telegram:
                 ds.update(last_ok=False, last_message="No AI tool found. Install Claude Code or Codex and sign in once.")
                 return {"error": ds["last_message"]}
             start, end = digest_period(st, period)
+            # make sure the whole period is saved; fetch older messages if it isn't
+            tolerance = dt.timedelta(minutes=5)
+            cov = core.coverage_start()
+            if cov is None or start < cov - tolerance:
+                self.digest_phase = "backfill"
+                days = min(31.0, (dt.datetime.now(dt.timezone.utc) - start).total_seconds() / 86400 + 0.02)
+                while self.exporting:
+                    await asyncio.sleep(1)
+                try:
+                    await self.export(rebuild_days=days)
+                except Exception:
+                    pass
+                cov = core.coverage_start()
+            note = ""
+            if cov is not None and start < cov - tolerance:   # still missing: only claim what we have
+                start = cov
+                note = f" Older messages weren't available, so it covers from {start:%a %H:%M}."
+            self.digest_phase = "writing"
             if not core.read_messages(start, end):
                 ds.update(last_ok=True, last_message="No messages in that period." if period and period != "since_last"
                           else "Nothing new since the last digest.")
@@ -404,11 +423,11 @@ class Telegram:
             code, out, err = await asyncio.to_thread(run_engine, kind, path, start, end)
             new = [(n, d) for n, d in _read_digests() if n not in before]
             if new:
-                ds.update(last_ok=True, last_message=f"{ENGINE_NAMES[kind]} wrote “{new[0][1].get('title') or new[0][0]}”.")
+                ds.update(last_ok=True, last_message=f"{ENGINE_NAMES[kind]} wrote “{new[0][1].get('title') or new[0][0]}”.{note}")
                 ds.pop("retry_after", None)
                 check_new_digests()
             elif code == 0:
-                ds.update(last_ok=True, last_message=last_line(out) or "Finished without writing a digest.")
+                ds.update(last_ok=True, last_message=(last_line(out) or "Finished without writing a digest.") + note)
             else:
                 ds.update(last_ok=False, last_message=f"{ENGINE_NAMES[kind]} failed: {last_line(err, out) or 'no details'}. Is it signed in?")
                 if auto:
@@ -417,6 +436,7 @@ class Telegram:
         finally:
             save_dstate(ds)
             self.digesting = False
+            self.digest_phase = None
 
     async def _maybe_auto_digest(self, fetched_new):
         st = load_settings()
@@ -612,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/login/password": lambda: TG.call(TG.sign_in_password(body["password"])),
             "/api/login/reset": lambda: self._login_reset(),
             "/api/selection": lambda: self._save_selection(body),
-            "/api/export": lambda: TG.call(TG.export(body.get("rebuild_days"))),
+            "/api/export": lambda: TG.call(TG.export(self._days(body.get("rebuild_days")))),
             "/api/preferences": lambda: self._save_prefs(body),
             "/api/feedback": lambda: self._feedback(body),
             "/api/settings": lambda: self._save_settings(body),
@@ -631,6 +651,14 @@ class Handler(BaseHTTPRequestHandler):
         core.save_env(api_id, api_hash)
         TG.call(TG.reset())
         return {"ok": True}
+
+    def _days(self, v):
+        if v in (None, "", 0):
+            return None
+        v = float(v)
+        if not 0 < v <= 31:
+            raise UserError("You can get up to 31 days of older messages.")
+        return v
 
     def _save_prefs(self, body):
         text = str(body.get("text", ""))

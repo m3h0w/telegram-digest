@@ -352,6 +352,7 @@ async def export(client, rebuild_days=None, days_back=None):
             kw["min_id"] = last_id
         else:
             kw["offset_date"] = now - dt.timedelta(days=days_back)
+        covers_from = kw.get("offset_date")
         by_day = {}
         async for m in client.iter_messages(entity, **kw):
             last_id = max(last_id or 0, m.id)
@@ -362,6 +363,11 @@ async def export(client, rebuild_days=None, days_back=None):
         n = sum(write_day(day, title, recs) for day, recs in sorted(by_day.items()))
         if last_id:
             st["last_ids"][gid_s] = last_id
+        if covers_from is not None:   # we now hold everything from this moment on
+            cov = st.setdefault("covered_from", {})
+            old = cov.get(gid_s)
+            if old is None or covers_from < dt.datetime.fromisoformat(old):
+                cov[gid_s] = covers_from.isoformat(timespec="seconds")
         summary["groups"][title] = n
         summary["total"] += n
         log(f"{title}: {n} new message(s)")
@@ -373,6 +379,35 @@ async def export(client, rebuild_days=None, days_back=None):
 
 
 # ---------- reading exports (used by the web app) ----------
+
+def _earliest_saved(gid):
+    """Date of the oldest saved message for a group (for installs from before coverage was tracked)."""
+    for day in reversed(export_dates()):
+        for jl in (EXPORTS / day).glob("*/messages.jsonl"):
+            for line in jl.read_text(encoding="utf-8").splitlines():
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if r.get("group_id") == gid:
+                    return dt.datetime.fromisoformat(r["date"])
+    return None
+
+
+def coverage_start():
+    """From when on we hold every message of every followed group (None if unknown)."""
+    sel = load_selection()["groups"]
+    if not sel:
+        return None
+    cov = load_state().get("covered_from", {})
+    starts = []
+    for gid in sel:
+        t = dt.datetime.fromisoformat(cov[gid]) if gid in cov else _earliest_saved(gid)
+        if t is None:
+            return None
+        starts.append(t)
+    return max(starts)
+
 
 def export_dates():
     if not EXPORTS.exists():

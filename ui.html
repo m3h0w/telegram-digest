@@ -137,7 +137,7 @@ details.more { margin-top: 10px; }
 details.more > summary, details.advanced > summary { cursor: pointer; color: var(--teal); }
 details.advanced > summary { font-size: 16px; font-weight: 600; color: var(--ink); }
 details.advanced[open] > summary { margin-bottom: 10px; }
-.opt { display: grid; grid-template-columns: 180px minmax(0, 260px); align-items: center; gap: 14px; margin: 8px 0; }
+.opt { display: grid; grid-template-columns: 180px minmax(0, 320px); align-items: center; gap: 14px; margin: 8px 0; }
 .opt > span { color: var(--muted); }
 .side-actions { margin-bottom: 18px; }
 .side-actions .split { width: 100%; }
@@ -479,7 +479,7 @@ async function startDigest(period) {
 }
 function digestAction() {
   const d = S.status.digest || {};
-  if (d.running) return `<div class="working"><span class="spin"></span><span>${esc(d.engine_name || "Your AI")} is writing a digest. This can take a few minutes.</span></div>`;
+  if (d.running) return `<div class="working"><span class="spin"></span><span>${d.phase === "backfill" ? "Getting older messages from Telegram for that period first…" : esc(d.engine_name || "Your AI") + " is writing a digest. This can take a few minutes."}</span></div>`;
   if (!d.engine) return `<p class="note">To get a digest, ask your AI assistant for one. To have them written automatically, see Settings.</p>`;
   return runButton(false) +
     (d.last_message ? `<p class="note">${d.last_ok === false ? '<span class="errc">' + esc(d.last_message) + "</span>" : esc(d.last_message)}</p>` : "");
@@ -997,6 +997,8 @@ function renderDigestStep(s) {
         <label class="choice"><input type="radio" name="dmode" value="manual"><span><b>Only when I ask</b><br>
           <span class="muted">Click “Write a digest now”, or ask your AI assistant.</span></span></label>
       </div>
+      ${d.found && d.found.claude && d.found.codex ? `<label class="opt"><span>Written by</span><select id="wengine">
+          <option value="auto">Claude Code (automatic choice)</option><option value="claude">Claude Code, always</option><option value="codex">Codex</option></select></label>` : ""}
       <label class="check"><input type="checkbox" id="wnotify" checked> Notify me on this Mac when something needs my attention</label>
       <label class="field pref"><span class="plabel">Anything that should always need your attention? (optional)</span>
         <textarea id="walways" rows="3" placeholder="One per line, for example: kitchen shifts, the sauna, anything from Rosaura"></textarea></label>
@@ -1022,7 +1024,8 @@ function renderDigestStep(s) {
         sec.items.push(...extra);
         await api("/api/preferences", { text: prefsText(p, document.createElement("div")) });
       }
-      await api("/api/settings", { onboarded: true, digest_mode: mode, notify: $("#wnotify").checked ? "attention" : "off" });
+      const eng = $("#wengine") ? $("#wengine").value : "auto";
+      await api("/api/settings", { onboarded: true, digest_mode: mode, digest_engine: eng, notify: $("#wnotify").checked ? "attention" : "off" });
       await api("/api/digest/run", {});
       await refreshStatus();
       show("digest");
@@ -1073,6 +1076,14 @@ function prefsText(p, root) {
     p.sections.map(sec => `## ${sec.title}\n` + sec.items.map(x => `- ${x}`).join("\n")).join("\n\n") + "\n";
 }
 
+function engineSelect(st, found) {
+  const autoName = found.claude ? "Claude Code" : found.codex ? "Codex" : null;
+  const opts = [["auto", autoName ? `Automatic choice (now: ${autoName})` : "Automatic choice"],
+                ["claude", "Claude Code" + (found.claude ? "" : " (not installed)")],
+                ["codex", "Codex" + (found.codex ? "" : " (not installed)")]];
+  return `<select data-set="digest_engine">${opts.map(([v, l]) => `<option value="${v}"${st.digest_engine === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+}
+
 // ----- settings -----
 const SCHEDULES = [["h1", "Every hour"], ["h2", "Every 2 hours"], ["h4", "Every 4 hours"], ["h8", "Every 8 hours"], ["h12", "Every 12 hours"],
                    ["daily", "Once a day"], ["after_fetch", "Whenever new messages come in"]];
@@ -1120,12 +1131,13 @@ function renderSettings(s) {
       ${auto ? `<label class="opt"><span>How often</span><select id="sched">${SCHEDULES.map(([v, l]) => `<option value="${v}"${scheduleKey(st) === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
         ${st.digest_schedule === "daily" ? `<label class="opt"><span>At</span><input type="time" data-set="digest_daily_at" value="${esc(st.digest_daily_at)}"></label>` : ""}` : ""}
       <label class="opt"><span>Notify me</span>${sel("notify", [["attention", "When something needs attention"], ["all", "For every new digest"], ["off", "Never"]])}</label>
+      <label class="opt"><span>Written by</span>${engineSelect(st, found)}</label>
+      ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on this Mac. Pick another option, or install it (see the setup guide).</p>` : ""}
       ${!d.engine && auto ? `<p class="errc">No AI tool found on this Mac, so digests can't be written automatically yet.</p>
         <p>Ask your AI assistant: <span class="quote inline">Install Claude Code (or Codex) on my Mac and sign me in, following step 6 of ${esc(GUIDE_URL)}</span></p>` : ""}
       <details class="more"><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
         <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
-        <label class="opt"><span>Written by</span>${sel("digest_engine", [["auto", foundNames.length ? `Whichever is installed (${foundNames[0]})` : "Whichever is installed"], ["claude", "Claude Code" + (found.claude ? "" : " (not installed)")], ["codex", "Codex" + (found.codex ? "" : " (not installed)")]])}</label>
       </details>
     </section>
 
@@ -1139,7 +1151,9 @@ function renderSettings(s) {
 
     <details class="panel advanced"><summary>Advanced</summary>
       <label class="opt"><span>Check for new messages every</span>${sel("fetch_every_minutes", [[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]])}</label>
-      <div class="row"><button class="btn ghost" id="exre">Re-check the last 24 hours</button></div>
+      <div class="row"><span>Get older messages from Telegram:</span>
+        <select id="olderdays" class="inline-select"><option value="3">last 3 days</option><option value="7">last 7 days</option><option value="31">last month</option></select>
+        <button class="btn ghost" id="exre">Get them</button></div>
       <dl class="facts">
         <dt>Telegram</dt><dd>${s.authorized ? `Logged in as ${esc(s.me)}` : "Not logged in"}</dd>
         <dt>Background</dt><dd>${s.background ? "Runs in the background and starts when you log in" : "Not running in the background"}</dd>
@@ -1158,7 +1172,7 @@ function renderSettings(s) {
     await refreshStatus();
   };
   on("exnow", checkNow(null));
-  on("exre", checkNow(1));
+  on("exre", () => checkNow(+$("#olderdays").value)());
   // digest settings
   const save = async patch => {
     try { SETTINGS = await api("/api/settings", patch); const s2 = await refreshStatus(); renderSettings(s2); }
