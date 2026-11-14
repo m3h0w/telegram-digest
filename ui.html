@@ -192,7 +192,13 @@ details.advanced[open] > summary { margin-bottom: 10px; }
 .working { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--teal); border-radius: 50%; animation: spin 1s linear infinite; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.bspin { display: inline-block; width: .95em; height: .95em; margin-right: 8px; vertical-align: -.14em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .75s linear infinite; }
+.bspin:only-child { margin-right: 0; }
+button[data-working] { cursor: progress; }
+.btn[data-working]:disabled { opacity: 1; }
+.btn[aria-busy="true"]:not(.ghost) { background: color-mix(in srgb, var(--teal) 82%, var(--surface)); }
+select[aria-busy="true"] { cursor: progress; opacity: .7; }
+@media (prefers-reduced-motion: reduce) { .spin, .bspin { animation: none; } }
 .empty h1 { font-family: var(--read); color: var(--ink); font-size: 24px; margin: 0 0 8px; }
 
 /* transcript */
@@ -299,6 +305,31 @@ input[type=checkbox] { width: auto; flex: none; margin: 0; accent-color: var(--t
 // ---------- helpers ----------
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+
+// Loading state for a button whose action waits on the app. The button locks at once
+// (no double clicks); after a moment it shows a spinner and what it's doing, so quick
+// actions don't flicker. Label comes from data-busy, else the button keeps its own text.
+async function busy(btn, fn, label) {
+  if (!btn || btn.dataset.working) return;
+  label = label ?? btn.dataset.busy ?? btn.textContent.trim();
+  const before = btn.innerHTML;
+  let shown = null;
+  btn.dataset.working = "1"; btn.disabled = true;
+  const timer = setTimeout(() => {
+    btn.style.minWidth = btn.offsetWidth + "px";       // don't let the button shrink
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = shown = `<span class="bspin" aria-hidden="true"></span>${label ? `<span>${esc(label)}</span>` : ""}`;
+  }, 150);
+  try { return await fn(); }
+  finally {
+    clearTimeout(timer);
+    if (btn.isConnected) {                              // the view may have been redrawn already
+      if (shown !== null && btn.innerHTML === shown) btn.innerHTML = before;
+      btn.removeAttribute("aria-busy"); btn.style.minWidth = "";
+      delete btn.dataset.working; btn.disabled = false;
+    }
+  }
+}
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const trunc = (s, n) => (s = String(s || "")).length > n ? s.slice(0, n - 1) + "…" : s;
 const oneLine = s => String(s || "").replace(/\s+/g, " ").trim();
@@ -837,7 +868,11 @@ document.addEventListener("click", e => {
   $$(".menu").forEach(m => { if (!mb || m !== mb.nextElementSibling) m.hidden = true; });
   if (mb) { const m = mb.nextElementSibling; m.hidden = !m.hidden; if (!m.hidden) { const f = m.querySelector("button"); if (f) f.focus(); } return; }
   const rp = e.target.closest("[data-runp]");
-  if (rp) { startDigest(rp.dataset.runp === "since_last" ? null : rp.dataset.runp); return; }
+  if (rp) {
+    const runBtn = rp.closest(".split")?.querySelector("[data-run]") || rp;
+    busy(runBtn, () => startDigest(rp.dataset.runp === "since_last" ? null : rp.dataset.runp), "Starting…");
+    return;
+  }
   const ip = e.target.closest("[data-ipick]");
   if (ip) {
     INSTALL_PICK = ip.dataset.ipick;
@@ -896,10 +931,10 @@ document.addEventListener("click", e => {
   } else if (d.fb) {
     const f = FB[d.fb];
     if (!f || t.classList.contains("done")) return;
-    api("/api/feedback", f).then(() => { t.innerHTML = ICON_DONE; t.classList.add("done"); t.title = "Noted. The digest will take this into account."; t.setAttribute("aria-label", t.title); })
-      .catch(err => { t.title = "Couldn't save: " + err.message; });
+    busy(t, () => api("/api/feedback", f).then(() => { t.innerHTML = ICON_DONE; t.classList.add("done"); t.title = "Noted. The digest will take this into account."; t.setAttribute("aria-label", t.title); })
+      .catch(err => { t.title = "Couldn't save: " + err.message; }), "");
   } else if (t.hasAttribute("data-run")) {
-    t.disabled = true; startDigest();
+    busy(t, () => startDigest(), "Starting…");
   } else if (t.hasAttribute("data-since")) {
     S.msgRange = "since"; S.thread = null; S.q = ""; show("messages");
   }
@@ -935,7 +970,7 @@ let GROUPS = null, SEL = null, TOPICS = {}, NEED_PW = false, SETTINGS = null, PI
 const GUIDE_URL = "https://raw.githubusercontent.com/m3h0w/telegram-digest/main/AI-SETUP.md";
 const needsSetup = (s, st) => !s.keys || !s.authorized || !s.selected || !(st && st.onboarded);
 const wizardStep = s => !s.keys ? 1 : !s.authorized ? 2 : !s.selected ? 3 : !(SETTINGS && SETTINGS.digests_chosen) ? 4 : 5;
-const on = (id, fn) => { const b = $("#" + id); if (b) b.onclick = fn; };
+const on = (id, fn) => { const b = $("#" + id); if (b) b.onclick = e => busy(b, () => fn(e)); };
 const errBox = (id, e) => { const el = $("#" + id); if (el) el.textContent = e ? e.message : ""; };
 function setTabLabel(s, st) { $(".tabs button[data-tab=setup]").textContent = needsSetup(s, st) ? "Setup" : "Settings"; }
 const timeOf = iso => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -973,7 +1008,7 @@ function renderWizard(s) {
         <label class="field"><span>App api_id</span><input type="text" id="apiid" inputmode="numeric" placeholder="A number, like 31234567"></label>
         <label class="field"><span>App api_hash</span><input type="password" id="apihash" placeholder="32 letters and numbers"></label>
       </div>
-      <div class="row"><button class="btn" id="savekeys">Continue</button><span class="errc" id="werr"></span></div>`);
+      <div class="row"><button class="btn" id="savekeys" data-busy="Checking…">Continue</button><span class="errc" id="werr"></span></div>`);
     on("savekeys", async () => {
       errBox("werr");
       try { await api("/api/keys", { api_id: $("#apiid").value, api_hash: $("#apihash").value }); renderSetup(); } catch (e) { errBox("werr", e); }
@@ -982,13 +1017,13 @@ function renderWizard(s) {
     let body;
     if (NEED_PW) body = `<p>Your account has a two-step verification password. Type it to finish logging in.</p>
       <div class="fields"><label class="field"><span>Password</span><input type="password" id="pw"></label></div>
-      <div class="row"><button class="btn" id="sendpw">Log in</button><span class="errc" id="werr"></span></div>`;
+      <div class="row"><button class="btn" id="sendpw" data-busy="Logging in…">Log in</button><span class="errc" id="werr"></span></div>`;
     else if (s.code_sent) body = `<p>Telegram just sent a code to your Telegram app (not by text message). Type it here.</p>
       <div class="fields"><label class="field"><span>Code</span><input type="text" id="code" inputmode="numeric" autocomplete="one-time-code"></label></div>
-      <div class="row"><button class="btn" id="sendcode">Log in</button><button class="link" id="restart">Use a different number</button><span class="errc" id="werr"></span></div>`;
+      <div class="row"><button class="btn" id="sendcode" data-busy="Logging in…">Log in</button><button class="link" id="restart">Use a different number</button><span class="errc" id="werr"></span></div>`;
     else body = `<p>This lets the app read your groups. It can't send anything, and nothing is marked as read. You'll see it in Telegram under Settings, Devices, where you can remove it any time.</p>
       <div class="fields"><label class="field"><span>Your phone number, with country code</span><input type="text" id="phone" inputmode="tel" placeholder="+48 600 000 000"></label></div>
-      <div class="row"><button class="btn" id="sendphone">Send me a code</button><span class="errc" id="werr"></span></div>`;
+      <div class="row"><button class="btn" id="sendphone" data-busy="Sending…">Send me a code</button><span class="errc" id="werr"></span></div>`;
     $("#view").innerHTML = wizardFrame(2, "Log in to Telegram", "", body);
     const go = (fn) => async () => { errBox("werr"); try { await fn(); } catch (e) { errBox("werr", e); } };
     on("sendphone", go(async () => { await api("/api/login/phone", { phone: $("#phone").value }); renderSetup(); }));
@@ -1018,7 +1053,7 @@ function renderPhoneStep(s) {
   $("#view").innerHTML = wizardFrame(5, "Get digests on your phone too?",
     "Optional. Your digests can arrive as Telegram messages from your own private bot, so you see them on your phone wherever you are.",
     `<div id="botbox"></div>
-     <div class="row wizard-end">${S.status.bot && S.status.bot.connected ? `<button class="btn" id="wdone">Finish</button>` : `<button class="btn ghost" id="wdone">Skip for now</button><span class="muted">You can set this up later in Settings.</span>`}</div>`);
+     <div class="row wizard-end">${S.status.bot && S.status.bot.connected ? `<button class="btn" id="wdone" data-busy="Finishing…">Finish</button>` : `<button class="btn ghost" id="wdone" data-busy="Finishing…">Skip for now</button><span class="muted">You can set this up later in Settings.</span>`}</div>`);
   botPanel($("#botbox"), { open: true, onConnected: () => renderPhoneStep(S.status) });
   on("wdone", async () => { stopBotPoll(); await api("/api/settings", { onboarded: true }); SETTINGS = await api("/api/settings"); setTabLabel(S.status, SETTINGS); show("digest"); });
 }
@@ -1041,10 +1076,10 @@ function renderDigestStep(s) {
       <label class="field pref"><span class="plabel">Anything that should always need your attention? (optional)</span>
         <textarea id="walways" rows="3" placeholder="One per line, for example: kitchen shifts, the sauna, anything from Rosaura"></textarea></label>
       <p class="muted">You can change all of this any time in Settings.</p>
-      <div class="row"><button class="btn" id="finish">Continue and write my first digest</button><span class="errc" id="werr"></span></div>`;
+      <div class="row"><button class="btn" id="finish" data-busy="Starting your digest…">Continue and write my first digest</button><span class="errc" id="werr"></span></div>`;
   } else {
     body = `${engineHelp()}
-      <div class="row"><button class="btn" id="recheck">Check again</button><button class="btn ghost" id="skip">Skip, I'll ask my AI for digests</button><span class="errc" id="werr"></span></div>`;
+      <div class="row"><button class="btn" id="recheck" data-busy="Checking…">Check again</button><button class="btn ghost" id="skip" data-busy="Saving…">Skip, I'll ask my AI for digests</button><span class="errc" id="werr"></span></div>`;
   }
   $("#view").innerHTML = wizardFrame(4, "How should digests be made?", "", body);
   $$("input[name=dmode]").forEach(r => r.onchange = () => { const row = $("#wschedrow"); if (row) row.hidden = $("input[name=dmode]:checked").value !== "auto"; });
@@ -1175,13 +1210,17 @@ function botPanel(box, opt = {}) {
   if (b.connected) {
     box.innerHTML = `<p class="okc">Connected. Digests arrive in Telegram from <b>@${esc(b.username || "your bot")}</b>, on your phone and everywhere else you use Telegram.</p>
       <label class="opt"><span>Send</span>${policySel}</label>
-      <div class="row"><button class="btn ghost" id="bottest">Send a test message</button><button class="btn ghost" id="botlatest">Send me the latest digest</button>
-        <button class="link" id="botoff">Disconnect</button><span class="muted" id="botmsg"></span></div>`;
+      <div class="row"><button class="btn ghost" id="bottest" data-busy="Sending…">Send a test message</button><button class="btn ghost" id="botlatest" data-busy="Sending…">Send me the latest digest</button>
+        <button class="link" id="botoff" data-busy="Disconnecting…">Disconnect</button><span class="muted" id="botmsg"></span></div>`;
     const msg = t => { $("#botmsg").textContent = t; };
     on("bottest", async () => { try { await api("/api/bot/test", {}); msg("Sent. Check Telegram."); } catch (e) { msg(e.message); } });
     on("botlatest", async () => { try { await api("/api/bot/latest", {}); msg("Sent. Check Telegram."); } catch (e) { msg(e.message); } });
     on("botoff", async () => { await api("/api/bot/disconnect", {}); BOT_STAGE = null; await refreshStatus(); botPanel(box, opt); });
-    $$("[data-set]", box).forEach(el => el.onchange = async () => { await api("/api/settings", { [el.dataset.set]: el.value }); await refreshStatus(); });
+    $$("[data-set]", box).forEach(el => el.onchange = async () => {
+      el.disabled = true; el.setAttribute("aria-busy", "true");
+      try { await api("/api/settings", { [el.dataset.set]: el.value }); await refreshStatus(); }
+      finally { el.disabled = false; el.removeAttribute("aria-busy"); }
+    });
     return;
   }
   if (BOT_STAGE === "hello" || b.pending) {
@@ -1191,7 +1230,7 @@ function botPanel(box, opt = {}) {
           <div class="row"><a class="btn" id="botopen" href="${esc((BOT_INFO && BOT_INFO.link) || "#")}" target="_blank" rel="noopener">Open @${esc(uname || "your bot")} in Telegram</a></div>
           <div class="working" id="botwait"><span class="spin"></span><span>Waiting for you to press Start…</span></div>
         </li></ol>
-      <div class="row"><button class="link" id="botcheck">I pressed Start</button><button class="link" id="botback">Use a different bot</button><span class="errc" id="boterr"></span></div>`;
+      <div class="row"><button class="link" id="botcheck" data-busy="Checking…">I pressed Start</button><button class="link" id="botback">Use a different bot</button><span class="errc" id="boterr"></span></div>`;
     const check = async () => {
       try {
         const r = await api("/api/bot/check", {});
@@ -1221,7 +1260,7 @@ function botPanel(box, opt = {}) {
           <li>When it asks for a username, send a name ending in “bot”, for example <b>mydigest_2026_bot</b>. If it's taken, add a few numbers.</li>
           <li>BotFather replies with a long <b>token</b> that looks like <span class="mono">123456789:AAH…</span>. Tap it to copy it, and paste it here:</li>
         </ol>
-        <div class="row"><input type="password" id="bottoken" placeholder="Paste the token here" autocomplete="off"><button class="btn" id="botsave">Connect</button></div>
+        <div class="row"><input type="password" id="bottoken" placeholder="Paste the token here" autocomplete="off"><button class="btn" id="botsave" data-busy="Connecting…">Connect</button></div>
         <p class="errc" id="boterr"></p>
       </li></ol>`;
   on("botsave", async () => {
@@ -1283,7 +1322,7 @@ function renderSettings(s) {
       ${!s.background ? `<p class="errc">The app isn't running in the background, so it stops when it's closed. Run the install line again to fix this.</p>` : ""}
       ${s.last_error ? `<p class="errc">${esc(s.last_error)}</p>` : ""}
       ${d.last_ok === false && d.last_message ? `<p class="errc">${esc(d.last_message)}</p>` : ""}
-      <div class="row"><button class="btn ghost" id="exnow" ${s.exporting ? "disabled" : ""}>${s.exporting ? "Checking…" : "Check for new messages now"}</button>
+      <div class="row"><button class="btn ghost" id="exnow" data-busy="Checking for new messages…" ${s.exporting ? "disabled" : ""}>${s.exporting ? "Checking…" : "Check for new messages now"}</button>
         ${d.engine ? (d.running ? digestAction() : runButton(true)) : ""}
         <span id="exmsg" class="muted"></span></div>
     </section>
@@ -1299,7 +1338,7 @@ function renderSettings(s) {
       <label class="opt"><span>Written by</span>${engineSelect(st, found)}</label>
       ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on this Mac yet. Choose another option, or install it as shown below.</p>` : ""}
       ${!d.engine && auto ? `<p class="errc">Automatic digests are on, but this Mac can't write them yet.</p>${engineHelp()}
-        <div class="row"><button class="btn" id="recheck2">Check again</button></div>` : ""}
+        <div class="row"><button class="btn" id="recheck2" data-busy="Checking…">Check again</button></div>` : ""}
       <details class="more"${moreOpen}><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
         <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
@@ -1312,7 +1351,7 @@ function renderSettings(s) {
     <section class="panel" id="prefs"><h2>What needs your attention</h2>
       <p class="muted">In your own words. The digest uses this to decide what goes under “Needs attention”. It also learns from the small buttons at the end of each digest point: the circle means “not for me”, the flag means “flag things like this”.</p>
       <div id="prefsform"><p class="muted">Loading…</p></div>
-      <div class="row"><button class="btn" id="saveprefs">Save</button><span id="prefsmsg" class="muted"></span></div>
+      <div class="row"><button class="btn" id="saveprefs" data-busy="Saving…">Save</button><span id="prefsmsg" class="muted"></span></div>
     </section>
 
     <section class="panel" id="groupsset"><h2>Groups you follow</h2><div id="groups"><p class="muted">Loading…</p></div></section>
@@ -1320,7 +1359,7 @@ function renderSettings(s) {
     <details class="panel advanced"${advOpen}><summary>Advanced</summary>
       <div class="row"><span>Get older messages from Telegram:</span>
         <select id="olderdays" class="inline-select"><option value="3">last 3 days</option><option value="7">last 7 days</option><option value="31">last month</option></select>
-        <button class="btn ghost" id="exre">Get them</button></div>
+        <button class="btn ghost" id="exre" data-busy="Getting them…">Get them</button></div>
       <dl class="facts">
         <dt>Telegram</dt><dd>${s.authorized ? `Logged in as ${esc(s.me)}` : "Not logged in"}</dd>
         <dt>Background</dt><dd>${s.background ? "Runs in the background and starts when you log in" : "Not running in the background"}</dd>
@@ -1333,7 +1372,7 @@ function renderSettings(s) {
 
   // status buttons
   const checkNow = days => async () => {
-    $("#exmsg").textContent = "Checking…";
+    $("#exmsg").textContent = "";
     try { const r = await api("/api/export", days ? { rebuild_days: days } : {}); $("#exmsg").textContent = r.busy ? "Already checking." : `Found ${plural(r.total, "new message", "new messages")}.`; }
     catch (e) { $("#exmsg").innerHTML = `<span class="errc">${esc(e.message)}</span>`; }
     await refreshStatus();
@@ -1342,13 +1381,14 @@ function renderSettings(s) {
   on("exre", () => checkNow(+$("#olderdays").value)());
   on("recheck2", async () => { const s2 = await refreshStatus(); renderSettings(s2); });
   // digest settings
-  const save = async patch => {
+  const save = async (patch, el) => {
+    if (el) { el.disabled = true; el.setAttribute("aria-busy", "true"); }   // locked while it saves
     try { SETTINGS = await api("/api/settings", patch); const s2 = await refreshStatus(); renderSettings(s2); }
-    catch (e) { alert(e.message); }
+    catch (e) { if (el && el.isConnected) { el.disabled = false; el.removeAttribute("aria-busy"); } alert(e.message); }
   };
-  $$("input[name=dmode]").forEach(r => r.onchange = () => save({ digest_mode: r.value }));
-  const sch = $("#sched"); if (sch) sch.onchange = () => save(scheduleSettings(sch.value));
-  $$("[data-set]").forEach(el => el.onchange = () => save({ [el.dataset.set]: el.value }));
+  $$("input[name=dmode]").forEach(r => r.onchange = () => save({ digest_mode: r.value }, r));
+  const sch = $("#sched"); if (sch) sch.onchange = () => save(scheduleSettings(sch.value), sch);
+  $$("[data-set]").forEach(el => el.onchange = () => save({ [el.dataset.set]: el.value }, el));
   // preferences
   let PREFS = null;
   api("/api/preferences").then(p => { PREFS = parsePrefs(p.text); $("#prefsform").innerHTML = prefsFields(PREFS); })
@@ -1365,7 +1405,7 @@ function renderSettings(s) {
   // keys
   on("chkeys", () => {
     $("#keysform").innerHTML = `<div class="row"><input type="text" id="apiid" placeholder="App api_id" style="max-width:160px"><input type="password" id="apihash" placeholder="App api_hash">
-      <button class="btn" id="savekeys">Save</button><span class="errc" id="kerr"></span></div>`;
+      <button class="btn" id="savekeys" data-busy="Checking…">Save</button><span class="errc" id="kerr"></span></div>`;
     on("savekeys", async () => { try { await api("/api/keys", { api_id: $("#apiid").value, api_hash: $("#apihash").value }); renderSetup(); } catch (e) { errBox("kerr", e); } });
   });
 }
@@ -1392,13 +1432,13 @@ async function groupPicker(box, opt) {
   ORDER = GROUPS.slice().sort((a, b) => (SEL[b.id] ? 1 : 0) - (SEL[a.id] ? 1 : 0));   // followed first, fixed while ticking
   box.innerHTML = `<input type="search" id="gfilter" placeholder="Search your ${GROUPS.length} groups and channels">
     <div id="grouplist"></div>
-    <div class="row"><button class="btn" id="savesel">${esc(opt.button)}</button>${opt.cancel ? `<button class="link" id="cancelsel">Cancel</button>` : ""}<span id="selmsg" class="muted"></span></div>`;
+    <div class="row"><button class="btn" id="savesel" data-busy="Saving…">${esc(opt.button)}</button>${opt.cancel ? `<button class="link" id="cancelsel">Cancel</button>` : ""}<span id="selmsg" class="muted"></span></div>`;
   $("#gfilter").oninput = drawGroups;
-  $("#savesel").onclick = async () => {
+  on("savesel", async () => {
     if (!Object.keys(SEL).length) { $("#selmsg").textContent = "Tick at least one group."; return; }
     try { await api("/api/selection", { groups: SEL }); await opt.onSave(); }
     catch (e) { $("#selmsg").innerHTML = `<span class="errc">${esc(e.message)}</span>`; }
-  };
+  });
   on("cancelsel", () => { PICKER_OPEN = false; SEL = null; drawFollowed(); });
   drawGroups();
 }
