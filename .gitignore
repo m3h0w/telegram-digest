@@ -1,0 +1,9 @@
+.env
+.venv/
+exports/
+digests/
+logs/
+.state.json
+selection.json
+groups.txt
+__pycache__/

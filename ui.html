@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telegram digest</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e4e4e0;
+    --accent: #2a7de1; --accent-ink: #fff; --hl: #fff6d6; --ok: #1f8a4c; --err: #c0392b;
+    --chip: #eef4fd; --chip-ink: #1d5fb0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161618; --card: #1f1f22; --ink: #ececec; --muted: #9a9aa0; --line: #2f2f33;
+      --accent: #4c95ef; --hl: #3a3420; --chip: #233247; --chip-ink: #9cc4f5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 880px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 17px; margin: 0; }
+  nav { display: flex; gap: 4px; }
+  nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px; border-radius: 8px; font: inherit; cursor: pointer; }
+  nav button.on { background: var(--card); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+  #status { margin-left: auto; color: var(--muted); font-size: 13px; }
+  main { max-width: 880px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .ok { color: var(--ok); } .err { color: var(--err); }
+  input[type=text], input[type=password], input[type=search], select {
+    font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
+  button.primary, button.secondary { font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); }
+  button.secondary { background: none; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.link { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .grp { border-top: 1px solid var(--line); padding: 8px 0; }
+  .grp:first-child { border-top: 0; }
+  .grp > .row { margin: 0; }
+  .grp label { display: flex; gap: 8px; align-items: center; cursor: pointer; flex: 1; }
+  .badge { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; }
+  .topics { margin: 6px 0 2px 28px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 12px; }
+  .topics label { font-size: 14px; }
+  #grouplist { max-height: 60vh; overflow: auto; margin: 8px 0; }
+  .savebar { display: flex; gap: 10px; align-items: center; }
+  h3.group { font-size: 18px; margin: 22px 0 8px; }
+  .topic { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
+  .topic h4 { margin: 0 0 6px; font-size: 15px; }
+  .topic h4 small { font-weight: normal; color: var(--muted); margin-left: 6px; }
+  ul.bullets { margin: 4px 0 6px; padding-left: 20px; }
+  ul.bullets li { margin: 4px 0; }
+  .highlights { border-left: 3px solid var(--accent); }
+  a.src { display: inline-block; font-size: 12px; background: var(--chip); color: var(--chip-ink); text-decoration: none;
+          border-radius: 6px; padding: 0 6px; margin: 0 2px; white-space: nowrap; }
+  a.src:hover { text-decoration: underline; }
+  details > summary { cursor: pointer; color: var(--accent); font-size: 14px; margin-top: 4px; }
+  .msg { padding: 8px 0; border-top: 1px solid var(--line); }
+  .msg:first-child { border-top: 0; }
+  .msg.hl { background: var(--hl); margin: 0 -8px; padding: 8px; border-radius: 6px; }
+  .meta { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .meta b { color: var(--ink); font-size: 14px; }
+  .meta .open { margin-left: auto; }
+  .meta a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .reply { display: block; font-size: 13px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; margin: 2px 0; }
+  .text { white-space: pre-wrap; word-wrap: break-word; }
+  .text a { color: var(--accent); }
+  .media { color: var(--muted); font-style: italic; }
+  .tag { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <h1>Telegram digest</h1>
+  <nav>
+    <button data-tab="digest">Digest</button>
+    <button data-tab="messages">Messages</button>
+    <button data-tab="setup">Setup</button>
+  </nav>
+  <span id="status"></span>
+</div></header>
+<main>
+  <section id="tab-digest" hidden></section>
+  <section id="tab-messages" hidden></section>
+  <section id="tab-setup" hidden></section>
+</main>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+const rich = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+const trunc = (s, n) => (s = String(s || "")).length > n ? s.slice(0, n - 1) + "…" : s;
+const hhmm = iso => iso ? iso.slice(11, 16) : "";
+const localISO = d => { const p = n => String(n).padStart(2, "0");
+  const o = -d.getTimezoneOffset(), sign = o >= 0 ? "+" : "-";
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${p(Math.floor(Math.abs(o) / 60))}:${p(Math.abs(o) % 60)}`; };
+const fmtWhen = iso => { if (!iso) return "never"; const d = new Date(iso);
+  return d.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); };
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+let STATUS = {};
+let TAB = location.hash.slice(1) || null;
+
+async function refreshStatus() {
+  try { STATUS = await api("/api/status"); } catch (e) { STATUS = { last_error: e.message }; }
+  const s = STATUS;
+  let txt = !s.keys ? "Not set up" : !s.authorized ? "Not logged in" :
+    `${esc(s.me || "Logged in")} · last export ${fmtWhen(s.last_export)}`;
+  if (s.exporting) txt += " · exporting…";
+  if (s.last_error) txt += ` · <span class="err">${esc(s.last_error)}</span>`;
+  $("#status").innerHTML = txt;
+  return s;
+}
+
+function show(tab) {
+  TAB = tab; history.replaceState(null, "", "#" + tab);
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  document.querySelectorAll("main > section").forEach(s => s.hidden = s.id !== "tab-" + tab);
+  ({ digest: renderDigestTab, messages: renderMessagesTab, setup: renderSetup })[tab]();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+
+// ---------- shared rendering ----------
+function tree(msgs) {
+  const groups = new Map();
+  for (const m of msgs) {
+    if (!groups.has(m.group_id)) groups.set(m.group_id, { id: m.group_id, title: m.group, topics: new Map() });
+    const g = groups.get(m.group_id), k = String(m.topic_id);
+    if (!g.topics.has(k)) g.topics.set(k, { id: m.topic_id, title: m.topic || "Chat", msgs: [] });
+    g.topics.get(k).msgs.push(m);
+  }
+  return groups;
+}
+const byIdMap = msgs => new Map(msgs.map(m => [m.group_id + ":" + m.id, m]));
+
+function timeLabel(m) {
+  const today = localISO(new Date()).slice(0, 10);
+  return (m.date.slice(0, 10) !== today ? m.date.slice(8, 10) + "." + m.date.slice(5, 7) + " " : "") + hhmm(m.date);
+}
+
+function msgHTML(m, byId, hl) {
+  let reply = "";
+  if (m.reply_to) {
+    const t = byId.get(m.group_id + ":" + m.reply_to);
+    reply = `<span class="reply">↪ ${t ? `${esc(t.sender)}: ${esc(trunc(t.text || t.media, 80))}` : "reply to an earlier message"}</span>`;
+  }
+  return `<div class="msg${hl ? " hl" : ""}">
+    <div class="meta"><span>${timeLabel(m)}</span><b>${esc(m.sender)}</b>${m.forwarded ? '<span class="tag">forwarded</span>' : ""}
+      <a class="open" href="${esc(m.app_link)}" title="Open this message in the Telegram app">Open in Telegram ↗</a>
+      <a href="${esc(m.link)}" target="_blank" rel="noopener" title="Open on t.me (web)">web</a></div>
+    ${reply}<div class="text">${m.media ? `<span class="media">${esc(m.media)}</span> ` : ""}${linkify(m.text)}</div>
+  </div>`;
+}
+
+function chipHTML(ref, groupId, byId) {
+  const m = byId.get(groupId + ":" + ref);
+  if (!m) {
+    const ch = String(groupId).replace(/^-100/, "");
+    return `<a class="src" href="tg://privatepost?channel=${esc(ch)}&post=${esc(ref)}">#${esc(ref)} ↗</a>`;
+  }
+  const who = m.sender.split(" ")[0];
+  return `<a class="src" href="${esc(m.app_link)}" title="${esc(m.sender + ": " + (m.text || m.media))}">${hhmm(m.date)} ${esc(who)} ↗</a>`;
+}
+
+function bulletsHTML(bullets, groupId, byId) {
+  if (!bullets || !bullets.length) return "";
+  return `<ul class="bullets">${bullets.map(b =>
+    `<li>${rich(b.text)} ${(b.refs || []).map(r => chipHTML(r, groupId, byId)).join("")}</li>`).join("")}</ul>`;
+}
+
+// ---------- Digest tab ----------
+async function renderDigestTab() {
+  const el = $("#tab-digest");
+  const list = await api("/api/digests").catch(() => []);
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">No digest yet.<br><br>Ask your AI assistant for a Telegram digest.<br>It reads this app's folder and the digest appears here, with links to every message.<br><br>
+      <button class="secondary" onclick="show('messages')">Browse messages</button></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="controls"><select id="dsel">${list.map(d =>
+      `<option value="${esc(d.name)}">${esc(d.title || d.name)} (${fmtWhen(d.from)} – ${fmtWhen(d.to)})</option>`).join("")}</select></div>
+    <div id="dbody"></div>`;
+  $("#dsel").onchange = () => renderDigest($("#dsel").value);
+  renderDigest(list[0].name);
+}
+
+async function renderDigest(name) {
+  const body = $("#dbody");
+  body.innerHTML = `<p class="muted">Loading…</p>`;
+  const d = await api("/api/digest?name=" + encodeURIComponent(name));
+  const msgs = await api(`/api/messages?from=${encodeURIComponent(d.from)}&to=${encodeURIComponent(d.to)}`);
+  const byId = byIdMap(msgs), t = tree(msgs);
+  let html = `<p class="muted">${fmtWhen(d.from)} – ${fmtWhen(d.to)} · ${msgs.length} messages</p>`;
+  const groupIds = [...new Set([...(d.groups || []).map(g => String(g.group_id)), ...t.keys()])];
+  for (const gid of groupIds) {
+    const dg = (d.groups || []).find(g => String(g.group_id) === gid) || { topics: [] };
+    const tg = t.get(gid) || { title: dg.title, topics: new Map() };
+    html += `<h3 class="group">${esc(tg.title || dg.title)}</h3>`;
+    if (dg.highlights && dg.highlights.length)
+      html += `<div class="topic highlights"><h4>Needs attention</h4>${bulletsHTML(dg.highlights, gid, byId)}</div>`;
+    const used = new Set();
+    const findTopic = dt => {
+      for (const [k, tp] of tg.topics) {
+        if ((dt.topic_id != null && String(dt.topic_id) === k) ||
+            (dt.topic && tp.title.toLowerCase() === dt.topic.toLowerCase())) return [k, tp];
+      }
+      return [null, null];
+    };
+    const sections = [];
+    for (const dt of dg.topics || []) {
+      const [k, tp] = findTopic(dt);
+      if (k) used.add(k);
+      sections.push({ title: tp ? tp.title : dt.topic, msgs: tp ? tp.msgs : [], bullets: dt.bullets });
+    }
+    for (const [k, tp] of tg.topics) if (!used.has(k)) sections.push({ title: tp.title, msgs: tp.msgs, bullets: null });
+    for (const s of sections) {
+      const refs = new Set((s.bullets || []).flatMap(b => b.refs || []));
+      html += `<div class="topic"><h4>${esc(s.title)}<small>${s.msgs.length} message${s.msgs.length === 1 ? "" : "s"}</small></h4>
+        ${s.bullets ? bulletsHTML(s.bullets, gid, byId) : `<p class="muted">Not summarised.</p>`}
+        ${s.msgs.length ? `<details><summary>Show original messages</summary>${s.msgs.map(m => msgHTML(m, byId, refs.has(m.id))).join("")}</details>` : ""}
+      </div>`;
+    }
+  }
+  body.innerHTML = html;
+}
+
+// ---------- Messages tab ----------
+async function renderMessagesTab() {
+  const el = $("#tab-messages");
+  const dates = await api("/api/dates").catch(() => []);
+  el.innerHTML = `<div class="controls">
+      <select id="msel"><option value="24h">Last 24 hours</option>${dates.map(d => `<option value="${d}">${d}</option>`).join("")}</select>
+      <input type="search" id="mfilter" placeholder="Filter by text or name">
+    </div><div id="mbody"></div>`;
+  $("#msel").onchange = loadMessages;
+  $("#mfilter").oninput = () => drawMessages();
+  loadMessages();
+}
+
+let MSGS = [];
+async function loadMessages() {
+  const v = $("#msel").value;
+  let from, to;
+  if (v === "24h") { to = new Date(); from = new Date(to - 864e5); }
+  else { from = new Date(v + "T00:00:00"); to = new Date(from.getTime() + 864e5); }
+  $("#mbody").innerHTML = `<p class="muted">Loading…</p>`;
+  MSGS = await api(`/api/messages?from=${encodeURIComponent(localISO(from))}&to=${encodeURIComponent(localISO(to))}`);
+  drawMessages();
+}
+
+function shownMessages() {
+  const q = ($("#mfilter").value || "").toLowerCase();
+  return q ? MSGS.filter(m => (m.text + " " + m.sender + " " + m.media).toLowerCase().includes(q)) : MSGS;
+}
+
+function drawMessages() {
+  const q = ($("#mfilter").value || "").toLowerCase();
+  const msgs = shownMessages();
+  if (!msgs.length) {
+    $("#mbody").innerHTML = `<div class="empty">${MSGS.length ? "Nothing matches." : "No messages exported for this period."}</div>`;
+    return;
+  }
+  const byId = byIdMap(MSGS);
+  let html = "";
+  for (const g of tree(msgs).values()) {
+    html += `<h3 class="group">${esc(g.title)}</h3>`;
+    const topics = [...g.topics.values()].sort((a, b) => b.msgs.length - a.msgs.length);
+    for (const tp of topics) {
+      html += `<div class="topic"><details${q ? " open" : ""}><summary><b>${esc(tp.title)}</b> · ${tp.msgs.length} message${tp.msgs.length === 1 ? "" : "s"} · latest ${hhmm(tp.msgs[tp.msgs.length - 1].date)}</summary>
+        ${tp.msgs.map(m => msgHTML(m, byId, false)).join("")}</details></div>`;
+    }
+  }
+  $("#mbody").innerHTML = html;
+}
+
+// ---------- Setup tab ----------
+let GROUPS = null, SEL = null, TOPICS = {}, NEED_PW = false, SHOW_KEYS = false;
+
+async function renderSetup() {
+  const s = await refreshStatus();
+  const el = $("#tab-setup");
+  const step1 = s.keys && !SHOW_KEYS
+    ? `<p class="ok">✓ API keys saved. <button class="link" id="chkeys">Change</button></p>`
+    : `<p class="muted">Create an app at <a href="https://my.telegram.org/apps" target="_blank" rel="noopener">my.telegram.org/apps</a> and paste its api_id and api_hash.</p>
+       <div class="row"><input type="text" id="apiid" placeholder="api_id" size="12">
+       <input type="password" id="apihash" placeholder="api_hash" size="34">
+       <button class="primary" id="savekeys">Save</button></div>`;
+  let step2;
+  if (!s.keys) step2 = `<p class="muted">Save your API keys first.</p>`;
+  else if (s.authorized) step2 = `<p class="ok">✓ Logged in as ${esc(s.me)}.</p>`;
+  else if (NEED_PW) step2 = `<p>Your account has a two-step verification password.</p>
+      <div class="row"><input type="password" id="pw" placeholder="Password"><button class="primary" id="sendpw">Log in</button></div>`;
+  else if (s.code_sent) step2 = `<p>Enter the code Telegram just sent to your Telegram app.</p>
+      <div class="row"><input type="text" id="code" placeholder="Code" size="8" autocomplete="one-time-code"><button class="primary" id="sendcode">Log in</button>
+      <button class="link" id="restart">Use a different number</button></div>`;
+  else step2 = `<p class="muted">Logging in creates a read-only session for this app. It shows up in Telegram → Settings → Devices.</p>
+      <div class="row"><input type="text" id="phone" placeholder="+48 …" size="18"><button class="primary" id="sendphone">Send code</button></div>`;
+  el.innerHTML = `
+    <div class="card"><h2>1 · Telegram API keys</h2>${step1}<div class="err" id="e1"></div></div>
+    <div class="card"><h2>2 · Telegram account</h2>${step2}<div class="err" id="e2"></div></div>
+    <div class="card"><h2>3 · Groups & subgroups</h2><div id="groups">${s.authorized ? `<p class="muted">Loading your groups…</p>` : `<p class="muted">Log in first.</p>`}</div></div>
+    <div class="card"><h2>4 · Export</h2>
+      <p>Last export: <b>${fmtWhen(s.last_export)}</b>${s.last_result ? ` · ${s.last_result.total} new message(s)` : ""}. New messages are fetched every 2 hours while your Mac is awake.</p>
+      <div class="row"><button class="primary" id="exnow" ${s.authorized && !s.exporting ? "" : "disabled"}>${s.exporting ? "Exporting…" : "Export now"}</button>
+      <button class="secondary" id="exre" ${s.authorized && !s.exporting ? "" : "disabled"}>Re-fetch last 24 hours</button>
+      <span id="exmsg" class="muted"></span></div></div>`;
+  const on = (id, fn) => { const b = $("#" + id); if (b) b.onclick = fn; };
+  const guard = (errId, fn) => async () => { $("#" + errId).textContent = ""; try { await fn(); } catch (e) { $("#" + errId).textContent = e.message; } };
+  on("chkeys", () => { SHOW_KEYS = true; renderSetup(); });
+  on("savekeys", guard("e1", async () => { await api("/api/keys", { api_id: $("#apiid").value, api_hash: $("#apihash").value }); SHOW_KEYS = false; renderSetup(); }));
+  on("sendphone", guard("e2", async () => { await api("/api/login/phone", { phone: $("#phone").value }); renderSetup(); }));
+  on("sendcode", guard("e2", async () => { const r = await api("/api/login/code", { code: $("#code").value }); NEED_PW = !!r.need_password; renderSetup(); }));
+  on("sendpw", guard("e2", async () => { await api("/api/login/password", { password: $("#pw").value }); NEED_PW = false; renderSetup(); }));
+  on("restart", guard("e2", async () => { await api("/api/login/reset", {}); NEED_PW = false; renderSetup(); }));
+  const runExport = days => async () => {
+    $("#exmsg").textContent = "Exporting…";
+    try { const r = await api("/api/export", days ? { rebuild_days: days } : {}); $("#exmsg").textContent = r.busy ? "Already running." : `Done · ${r.total} new message(s).`; }
+    catch (e) { $("#exmsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+    refreshStatus();
+  };
+  on("exnow", runExport(null));
+  on("exre", runExport(1));
+  if (s.authorized) loadGroups();
+}
+
+async function loadGroups() {
+  const box = $("#groups");
+  try {
+    if (!GROUPS) GROUPS = await api("/api/groups");
+    if (!SEL) SEL = (await api("/api/selection")).groups || {};
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  box.innerHTML = `<div class="row"><input type="search" id="gfilter" placeholder="Search your ${GROUPS.length} groups and channels" style="flex:1"></div>
+    <div id="grouplist"></div>
+    <div class="savebar"><button class="primary" id="savesel">Save selection</button><span id="selmsg" class="muted"></span></div>`;
+  $("#gfilter").oninput = drawGroups;
+  $("#savesel").onclick = async () => {
+    try { const r = await api("/api/selection", { groups: SEL }); $("#selmsg").textContent = `Saved · ${r.selected} group(s). Use "Export now" to fetch them right away.`; refreshStatus(); }
+    catch (e) { $("#selmsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  };
+  drawGroups();
+}
+
+function groupState(g) {
+  const s = SEL[g.id];
+  if (!s) return "off";
+  if (s.topics === "all") return "on";
+  return "some";
+}
+
+function drawGroups() {
+  const q = ($("#gfilter").value || "").toLowerCase();
+  const list = GROUPS.filter(g => g.title.toLowerCase().includes(q))
+    .sort((a, b) => (SEL[b.id] ? 1 : 0) - (SEL[a.id] ? 1 : 0));
+  $("#grouplist").innerHTML = list.map(g => {
+    const st = groupState(g);
+    const n = SEL[g.id] && SEL[g.id].topics !== "all" ? `${SEL[g.id].topics.length} topic(s)` : "";
+    return `<div class="grp" data-gid="${esc(g.id)}">
+      <div class="row"><label><input type="checkbox" class="gchk" ${st !== "off" ? "checked" : ""}>
+        <span>${esc(g.title)}</span>
+        <span class="badge">${g.forum ? "has subgroups" : g.kind}</span>${n ? `<span class="badge">${n}</span>` : ""}</label>
+        ${g.forum ? `<button class="link tbtn">${TOPICS[g.id] && TOPICS[g.id].open ? "Hide subgroups" : "Choose subgroups"}</button>` : ""}</div>
+      ${g.forum && TOPICS[g.id] && TOPICS[g.id].open ? `<div class="topics">${topicsHTML(g)}</div>` : ""}
+    </div>`;
+  }).join("") || `<p class="muted">No match.</p>`;
+  document.querySelectorAll(".grp").forEach(row => {
+    const g = GROUPS.find(x => x.id === row.dataset.gid);
+    const chk = $(".gchk", row);
+    chk.indeterminate = groupState(g) === "some";
+    chk.onchange = () => { if (chk.checked) SEL[g.id] = { title: g.title, forum: g.forum, topics: "all" }; else delete SEL[g.id]; drawGroups(); };
+    const tb = $(".tbtn", row);
+    if (tb) tb.onclick = () => toggleTopics(g);
+    row.querySelectorAll(".tchk").forEach(c => c.onchange = () => toggleTopic(g, +c.dataset.tid, c.checked));
+  });
+}
+
+async function toggleTopics(g) {
+  if (TOPICS[g.id] && TOPICS[g.id].list) { TOPICS[g.id].open = !TOPICS[g.id].open; return drawGroups(); }
+  TOPICS[g.id] = { open: true, list: null };
+  drawGroups();
+  try { TOPICS[g.id].list = await api("/api/topics?gid=" + encodeURIComponent(g.id)); }
+  catch (e) { TOPICS[g.id].error = e.message; }
+  drawGroups();
+}
+
+function topicsHTML(g) {
+  const t = TOPICS[g.id];
+  if (t.error) return `<span class="err">${esc(t.error)}</span>`;
+  if (!t.list) return `<span class="muted">Loading subgroups…</span>`;
+  const s = SEL[g.id];
+  return t.list.map(tp => {
+    const on = !!s && (s.topics === "all" || s.topics.includes(tp.id));
+    return `<label><input type="checkbox" class="tchk" data-tid="${tp.id}" ${on ? "checked" : ""}> ${esc(tp.title)}</label>`;
+  }).join("");
+}
+
+function toggleTopic(g, tid, on) {
+  const all = TOPICS[g.id].list.map(t => t.id);
+  const s = SEL[g.id];
+  let cur = s ? (s.topics === "all" ? all.slice() : s.topics.slice()) : [];
+  cur = on ? [...new Set([...cur, tid])] : cur.filter(t => t !== tid);
+  if (!cur.length) delete SEL[g.id];
+  else SEL[g.id] = { title: g.title, forum: g.forum, topics: cur.length === all.length ? "all" : cur };
+  drawGroups();
+}
+
+// ---------- start ----------
+(async () => {
+  const s = await refreshStatus();
+  const ready = s.keys && s.authorized && s.selected > 0;
+  show(TAB && ["digest", "messages", "setup"].includes(TAB) ? TAB : (ready ? "digest" : "setup"));
+  setInterval(refreshStatus, 60000);
+})();
+</script>
+</body>
+</html>
