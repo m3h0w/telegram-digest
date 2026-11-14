@@ -32,6 +32,8 @@ with links back to the original messages.
 4. When it finishes, the browser opens **http://localhost:8765**. If macOS shows
    "Background Items Added", that's this app; it starts automatically when they log in.
    Ask them to bookmark the page.
+5. The page opens on a short guided setup with four steps (Connect Telegram, Log in,
+   Choose groups, Digests). Steps 2 to 6 below match it; help them through it there.
 
 ## Step 2: Create their Telegram API keys (my.telegram.org)
 

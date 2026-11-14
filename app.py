@@ -642,6 +642,8 @@ class Handler(BaseHTTPRequestHandler):
                 if value not in CHOICES[key]:
                     raise UserError(f"Pick one of the offered options for {key}.")
                 st[key] = value
+            elif key == "onboarded":
+                st[key] = bool(value)
             elif key == "digest_daily_at":
                 if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(value)):
                     raise UserError("Use a time like 08:00.")
