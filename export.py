@@ -19,6 +19,7 @@ import asyncio
 import datetime as dt
 import json
 import os
+import time
 import re
 import sys
 from pathlib import Path
@@ -39,11 +40,22 @@ SESSION = SECRET_DIR / "digest"  # Telethon adds ".session"
 SESSION_FILE = Path(str(SESSION) + ".session")
 
 
+WINDOWS = os.name == "nt"
+RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
+
+
 def write_atomic(path, text):
     """Write a file so readers never see it half-written."""
     tmp = Path(str(path) + ".tmp")
     tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:          # Windows: someone is reading the file this instant
+            if not WINDOWS or attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def log(msg):
@@ -55,7 +67,7 @@ def log(msg):
 def load_env():
     cfg = {}
     if ENV.exists():
-        for line in ENV.read_text().splitlines():
+        for line in ENV.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
@@ -66,7 +78,7 @@ def load_env():
 
 def save_env(api_id, api_hash):
     new = {"API_ID": str(api_id).strip(), "API_HASH": str(api_hash).strip()}
-    lines = ENV.read_text().splitlines() if ENV.exists() else []
+    lines = ENV.read_text(encoding="utf-8").splitlines() if ENV.exists() else []
     out = []
     for line in lines:
         key = line.split("=", 1)[0].strip()
@@ -76,7 +88,7 @@ def save_env(api_id, api_hash):
     out += [f"{k}={v}" for k, v in new.items()]
     old = os.umask(0o077)
     try:
-        ENV.write_text("\n".join(out) + "\n")
+        ENV.write_text("\n".join(out) + "\n", encoding="utf-8")
     finally:
         os.umask(old)
     os.chmod(ENV, 0o600)
@@ -84,7 +96,7 @@ def save_env(api_id, api_hash):
 
 def update_env(updates):
     """Set (or, with None, remove) keys in .env, keeping everything else."""
-    lines = ENV.read_text().splitlines() if ENV.exists() else []
+    lines = ENV.read_text(encoding="utf-8").splitlines() if ENV.exists() else []
     out, done = [], set()
     for line in lines:
         key = line.split("=", 1)[0].strip()
@@ -97,7 +109,7 @@ def update_env(updates):
     out += [f"{k}={v}" for k, v in updates.items() if k not in done and v is not None]
     old = os.umask(0o077)
     try:
-        ENV.write_text("\n".join(out) + "\n")
+        ENV.write_text("\n".join(out) + "\n", encoding="utf-8")
     finally:
         os.umask(old)
     os.chmod(ENV, 0o600)
@@ -113,7 +125,7 @@ def make_client(cfg):
     os.chmod(SECRET_DIR, 0o700)
     return TelegramClient(
         str(SESSION), int(cfg["API_ID"]), cfg["API_HASH"],
-        device_model="telegram-digest (Mac)", app_version="2.0",
+        device_model="telegram-digest (Windows)" if WINDOWS else "telegram-digest (Mac)", app_version="2.0",
         receive_updates=False,
     )
 
@@ -128,12 +140,12 @@ def secure_session():
 
 def load_selection():
     if SELECTION.exists():
-        sel = json.loads(SELECTION.read_text())
+        sel = json.loads(SELECTION.read_text(encoding="utf-8"))
         sel.setdefault("groups", {})
         return sel
     sel = {"groups": {}}
     if LEGACY_GROUPS.exists():  # migrate from the first version
-        for line in LEGACY_GROUPS.read_text().splitlines():
+        for line in LEGACY_GROUPS.read_text(encoding="utf-8").splitlines():
             m = re.match(r"\s*(-?\d+)\s*(?:#\s*(.*))?$", line)
             if m:
                 sel["groups"][m.group(1)] = {"title": (m.group(2) or "").strip(), "topics": "all"}
@@ -151,7 +163,7 @@ def save_selection(sel):
 def load_state():
     if not STATE.exists():
         return {"last_ids": {}, "last_export": None, "needs_rebuild": False}
-    st = json.loads(STATE.read_text())
+    st = json.loads(STATE.read_text(encoding="utf-8"))
     if "last_ids" not in st:  # first-version format: {"-100…": last_id}
         return {"last_ids": st, "last_export": None, "needs_rebuild": True}
     return st
@@ -309,7 +321,8 @@ def record(m, entity, gid, group_title, topics):
 def slug(s):
     s = re.sub(r"[/&+|]", " ", s or "")
     s = re.sub(r"[^\w\- ]+", "", s, flags=re.U).strip()
-    return re.sub(r"\s+", "-", s).lower()[:60]
+    s = re.sub(r"\s+", "-", s).lower()[:60]
+    return s + "-" if WINDOWS and s in RESERVED else s    # names Windows won't allow as files
 
 
 def md_line(r):

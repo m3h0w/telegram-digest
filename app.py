@@ -101,7 +101,7 @@ CHOICES = {
 
 def load_settings():
     try:
-        st = json.loads(SETTINGS.read_text())
+        st = json.loads(SETTINGS.read_text(encoding="utf-8"))
     except Exception:
         st = {}
     if isinstance(st.get("notify"), bool):          # older versions stored on/off
@@ -137,8 +137,32 @@ def add_feedback(kind, text, topic):
     PREFS.write_text(s + "\n" + line + "\n", encoding="utf-8")
 
 
+WINDOWS = os.name == "nt"
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # Windows: run helpers without flashing a console
+OS_NAME = "windows" if WINDOWS else "mac" if sys.platform == "darwin" else "linux"
+
+# Windows toast through the built-in Windows PowerShell; the text arrives in environment variables
+TOAST_PS = r"""
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+$x = $t.GetElementsByTagName('text')
+$x.Item(0).AppendChild($t.CreateTextNode($env:TGD_TITLE)) > $null
+$x.Item(1).AppendChild($t.CreateTextNode($env:TGD_TEXT)) > $null
+$n = [Windows.UI.Notifications.ToastNotification]::new($t)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show($n)
+"""
+
+
 def notify(title, text):
-    """Native macOS notification (no-op elsewhere)."""
+    """Native notification on macOS and Windows (no-op elsewhere)."""
+    if WINDOWS:
+        try:
+            subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", TOAST_PS],
+                           env=dict(os.environ, TGD_TITLE=str(title), TGD_TEXT=str(text)),
+                           timeout=20, check=False, capture_output=True, creationflags=NO_WINDOW)
+        except Exception:
+            pass
+        return
     if sys.platform != "darwin":
         return
     q = lambda v: '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -155,7 +179,33 @@ DSTATE = core.ROOT / ".digest-state.json"
 ENGINE_NAMES = {"claude": "Claude Code", "codex": "Codex"}
 
 
+def windows_path():
+    """PATH as Windows has it now, so a tool installed after login is still found."""
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    try:
+        import winreg
+        for root, key in ((winreg.HKEY_CURRENT_USER, r"Environment"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    parts += os.path.expandvars(winreg.QueryValueEx(k, "Path")[0]).split(os.pathsep)
+            except OSError:
+                pass
+    except ImportError:
+        pass
+    home, local, roaming = os.path.expanduser("~"), os.environ.get("LOCALAPPDATA", ""), os.environ.get("APPDATA", "")
+    parts += [os.path.join(home, ".local", "bin"), os.path.join(home, ".codex", "bin")]
+    if roaming:
+        parts.append(os.path.join(roaming, "npm"))
+    if local:
+        parts += [os.path.join(local, "Microsoft", "WinGet", "Links"), os.path.join(local, "Programs", "codex"),
+                  os.path.join(local, "OpenAI", "Codex", "bin")]
+    return os.pathsep.join(dict.fromkeys(p for p in parts if p))
+
+
 def tool_path():
+    if WINDOWS:
+        return windows_path()
     home = os.path.expanduser("~")
     extra = [f"{home}/.local/bin", f"{home}/.claude/local", f"{home}/bin", f"{home}/.npm-global/bin",
              f"{home}/.bun/bin", f"{home}/.volta/bin", f"{home}/.codex/bin", "/opt/homebrew/bin", "/usr/local/bin"]
@@ -185,7 +235,7 @@ def pick_engine(st=None):
 
 def load_dstate():
     try:
-        return json.loads(DSTATE.read_text())
+        return json.loads(DSTATE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -260,17 +310,20 @@ def run_engine(kind, path, start, end):
 
 
 def _run_engine(kind, path, prompt, extra):
+    via_stdin = WINDOWS and path.lower().endswith((".cmd", ".bat"))
     if kind == "claude":
-        cmd = [path, "-p", prompt, "--permission-mode", "acceptEdits",
+        cmd = [path, "-p"] + ([] if via_stdin else [prompt]) + ["--permission-mode", "acceptEdits",
                "--allowedTools", "Read,Write,Edit,Glob,Grep", "--output-format", "text"] + extra
     else:
-        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never"] + extra + [prompt]
+        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never"] + extra + ["-" if via_stdin else prompt]
     env = dict(os.environ, PATH=tool_path())
     env.pop("ANTHROPIC_API_KEY", None)   # use the person's subscription, not a pay-as-you-go key
     env.pop("OPENAI_API_KEY", None)
     (core.ROOT / "logs").mkdir(exist_ok=True)
     try:
-        r = subprocess.run(cmd, cwd=str(core.ROOT), env=env, capture_output=True, text=True, timeout=900)
+        r = subprocess.run(cmd, cwd=str(core.ROOT), env=env, capture_output=True, text=True, timeout=900,
+                           encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+                           input=prompt if via_stdin else None, stdin=None if via_stdin else subprocess.DEVNULL)
         out, err, code = r.stdout or "", r.stderr or "", r.returncode
     except subprocess.TimeoutExpired:
         out, err, code = "", "Timed out after 15 minutes.", -1
@@ -465,7 +518,9 @@ class Telegram:
             "interval_hours": fetch_every_s() / 3600,
             "fetch_every_minutes": fetch_every_s() // 60,
             "fetch_requested": FETCH_REQUEST.exists(),
-            "background": os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS or os.getppid() == 1,
+            "background": os.environ.get("TGD_BACKGROUND") == "1" or os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS
+                          or (not WINDOWS and os.getppid() == 1),
+            "os": OS_NAME,
             "exporting": self.exporting, "api": API_VERSION,
             "last_result": self.last_result, "last_error": self.last_error,
         }
@@ -640,13 +695,19 @@ class Telegram:
         """After an update replaces the program files, restart into the new version by itself."""
         if code_stamp() == self.code_stamp or self.digesting or self.exporting:
             return
+        if WINDOWS and os.environ.get("TGD_BACKGROUND") != "1":
+            return      # started by hand on Windows: nothing would start it again
         log("Program files were updated; restarting to use the new version.")
         try:
             if self.client is not None:
                 await self.client.disconnect()
         except Exception:
             pass
-        sys.stdout.flush(); sys.stderr.flush()
+        for stream in (sys.stdout, sys.stderr):
+            if stream:
+                stream.flush()
+        if WINDOWS:
+            os._exit(75)    # the background runner (service.pyw) starts it again straight away
         os.execv(sys.executable, [sys.executable, CODE_FILES[0]] + sys.argv[1:])
 
     async def _scheduler(self):

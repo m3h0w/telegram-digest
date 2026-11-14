@@ -1064,15 +1064,15 @@ function renderDigestStep(s) {
   if (d.engine) {
     body = `<div class="choices">
         <label class="choice"><input type="radio" name="dmode" value="auto" checked><span><b>Automatically</b> (recommended)<br>
-          <span class="muted">${esc(d.engine_name)} writes them on this Mac, using your ${d.engine === "claude" ? "Claude" : "ChatGPT"} plan.</span></span></label>
+          <span class="muted">${esc(d.engine_name)} writes them on ${HERE()}, using your ${d.engine === "claude" ? "Claude" : "ChatGPT"} plan.</span></span></label>
         <label class="choice"><input type="radio" name="dmode" value="manual"><span><b>Only when I ask</b><br>
           <span class="muted">Click “Write a digest now”, or ask your AI assistant.</span></span></label>
       </div>
       <label class="opt" id="wschedrow"><span>How often</span><select id="wsched">${SCHEDULES.filter(([v]) => v !== "daily").map(([v, l]) => `<option value="${v}"${v === "h4" ? " selected" : ""}>${l}${v === "h4" ? " (recommended)" : ""}</option>`).join("")}</select></label>
-      <p class="muted">The app copies new messages from your groups to this Mac every 2 hours. Each digest sums up what's new since the previous one, and a digest is only written when there is something new.</p>
+      <p class="muted">The app copies new messages from your groups to ${HERE()} every 2 hours. Each digest sums up what's new since the previous one, and a digest is only written when there is something new.</p>
       ${d.found && d.found.claude && d.found.codex ? `<label class="opt"><span>Written by</span><select id="wengine">
           <option value="auto">Claude Code (automatic choice)</option><option value="claude">Claude Code, always</option><option value="codex">Codex</option></select></label>` : ""}
-      <label class="check"><input type="checkbox" id="wnotify" checked> Notify me on this Mac when something needs my attention</label>
+      <label class="check"><input type="checkbox" id="wnotify" checked> Notify me on ${HERE()} when something needs my attention</label>
       <label class="field pref"><span class="plabel">Anything that should always need your attention? (optional)</span>
         <textarea id="walways" rows="3" placeholder="One per line, for example: kitchen shifts, the sauna, anything from Rosaura"></textarea></label>
       <p class="muted">You can change all of this any time in Settings.</p>
@@ -1172,29 +1172,39 @@ function modelOptions(st, kind, sel) {
   return "";
 }
 
+// Mac or Windows, for wording and instructions
+const WIN = () => !!(S.status && S.status.os === "windows");
+const HERE = () => WIN() ? "this computer" : "this Mac";
+const MACHINE = () => WIN() ? "PC" : "Mac";
+
 // ----- help installing Claude Code or Codex -----
 const INSTALL = {
   claude: { tool: "Claude Code", plan: "Claude", line: "curl -fsSL https://claude.ai/install.sh | bash", signin: "claude",
-            signinText: "A browser window opens: choose your Claude account and allow access. Then type /exit and close Terminal.",
+            winLine: "irm https://claude.ai/install.ps1 | iex",
+            signinText: "A browser window opens: choose your Claude account and allow access. Then type /exit and close the window.",
             note: "Needs a paid Claude plan (Pro or higher). On the free plan, choose ChatGPT instead or ask your AI for digests." },
   codex: { tool: "Codex", plan: "ChatGPT", line: "curl -fsSL https://chatgpt.com/codex/install.sh | sh", signin: "codex login",
-           signinText: "A browser window opens: choose “Sign in with ChatGPT” and allow access. Then close Terminal.",
+           winLine: 'powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"',
+           signinText: "A browser window opens: choose “Sign in with ChatGPT” and allow access. Then close the window.",
            note: "Included with every ChatGPT plan. The ChatGPT app alone isn't enough; this adds the part the digest uses." },
 };
 let INSTALL_PICK = null;
 function engineHelp() {
   const pick = INSTALL_PICK, i = pick && INSTALL[pick];
   return `<div class="ehelp">
-    <p>Digests are written by your own AI, using the plan you already pay for. That needs one small extra piece on this Mac. Which AI do you use?</p>
+    <p>Digests are written by your own AI, using the plan you already pay for. That needs one small extra piece on ${HERE()}. Which AI do you use?</p>
     <div class="row"><button class="btn${pick === "claude" ? "" : " ghost"}" data-ipick="claude">Claude</button><button class="btn${pick === "codex" ? "" : " ghost"}" data-ipick="codex">ChatGPT</button></div>
     ${i ? `<ol class="howto">
-        <li>Open <b>Terminal</b> (press Cmd+Space, type Terminal, press Enter), paste this line and press Enter:
+        ${WIN() ? `<li>Open <b>PowerShell</b> (press the Windows key, type PowerShell, press Enter), paste this line and press Enter:
+          <p class="quote">${esc(i.winLine)}</p></li>
+        <li>When it's done, close that window and open PowerShell again, so it finds the new command. Paste this and press Enter to sign in:<p class="quote">${esc(i.signin)}</p>${esc(i.signinText)}</li>`
+        : `<li>Open <b>Terminal</b> (press Cmd+Space, type Terminal, press Enter), paste this line and press Enter:
           <p class="quote">${esc(i.line)}</p></li>
-        <li>When it's done, paste this and press Enter to sign in:<p class="quote">${esc(i.signin)}</p>${esc(i.signinText)}</li>
+        <li>When it's done, paste this and press Enter to sign in:<p class="quote">${esc(i.signin)}</p>${esc(i.signinText)}</li>`}
         <li>Click <b>Check again</b> below.</li>
       </ol>
       <p class="muted small">${esc(i.note)} If Check again still doesn't find it, run the Telegram Digest install line once more, then check again.</p>` : ""}
-    <p class="muted small">Or let your AI assistant do it: “Set up automatic digests for Telegram Digest on my Mac, following step 6 of ${esc(GUIDE_URL)}”</p>
+    <p class="muted small">Or let your AI assistant do it: “Set up automatic digests for Telegram Digest on my ${MACHINE()}, following step 6 of ${esc(GUIDE_URL)}”</p>
   </div>`;
 }
 
@@ -1285,10 +1295,10 @@ function flowSteps(s, st, sel) {
   const how = (SCHEDULES.find(x => x[0] === scheduleKey(st)) || ["", "regularly"])[1].toLowerCase() + (st.digest_schedule === "daily" ? " at " + st.digest_daily_at : "");
   const step2 = auto && d.engine
     ? `<span><b>A digest is written from them</b> ${esc(how)}, when something's new, by ${esc(d.engine_name)}. <button class="link" data-goto="setup:digestset">Change</button></span>`
-    : auto ? `<span><b>A digest is written from them</b> once an AI tool is set up on this Mac. <button class="link" data-goto="setup:digestset">See Digests</button></span>`
+    : auto ? `<span><b>A digest is written from them</b> once an AI tool is set up on ${HERE()}. <button class="link" data-goto="setup:digestset">See Digests</button></span>`
     : `<span><b>A digest is written from them</b> when you ask. <button class="link" data-goto="setup:digestset">Change</button></span>`;
   return `<ol class="flow">
-    <li><span class="how"><b>New messages are copied to this Mac</b> every ${sel("fetch_every_minutes", [[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]])}</span>
+    <li><span class="how"><b>New messages are copied to ${HERE()}</b> every ${sel("fetch_every_minutes", [[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]])}</span>
       <span class="muted">${last}You can read them under Messages.</span></li>
     <li>${step2}
       <span class="muted">Right before each digest the app copies the newest messages, so a digest never misses any. Each one covers ${st.digest_period === "last_24h" ? "the last 24 hours" : "what's new since the previous digest"}.</span></li>
@@ -1300,7 +1310,7 @@ function statusSentence(s, st) {
   let a = s.last_export ? `Checks for new messages every ${every}; last checked at ${timeOf(s.last_export)}` + (s.last_count != null ? ` (${plural(s.last_count, "new message", "new messages")}).` : ".") : `Checks for new messages every ${every}.`;
   let b;
   if (st.digest_mode === "auto" && d.engine) b = `${d.engine_name} writes digests ${(SCHEDULES.find(x => x[0] === scheduleKey(st)) || ["", "regularly"])[1].toLowerCase()}${st.digest_schedule === "daily" ? " at " + st.digest_daily_at : ""}, when there's something new.`;
-  else if (st.digest_mode === "auto") b = `Automatic digests are on, but no AI tool was found on this Mac. See Digests below.`;
+  else if (st.digest_mode === "auto") b = `Automatic digests are on, but no AI tool was found on ${HERE()}. See Digests below.`;
   else b = `Digests are written when you ask.`;
   return `${a} ${b}`;
 }
@@ -1336,8 +1346,8 @@ function renderSettings(s) {
         ${st.digest_schedule === "daily" ? `<label class="opt"><span>At</span><input type="time" data-set="digest_daily_at" value="${esc(st.digest_daily_at)}"></label>` : ""}` : ""}
       <label class="opt"><span>Notify me</span>${sel("notify", [["attention", "When something needs attention"], ["all", "For every new digest"], ["off", "Never"]])}</label>
       <label class="opt"><span>Written by</span>${engineSelect(st, found)}</label>
-      ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on this Mac yet. Choose another option, or install it as shown below.</p>` : ""}
-      ${!d.engine && auto ? `<p class="errc">Automatic digests are on, but this Mac can't write them yet.</p>${engineHelp()}
+      ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on ${HERE()} yet. Choose another option, or install it as shown below.</p>` : ""}
+      ${!d.engine && auto ? `<p class="errc">Automatic digests are on, but ${HERE()} can't write them yet.</p>${engineHelp()}
         <div class="row"><button class="btn" id="recheck2" data-busy="Checking…">Check again</button></div>` : ""}
       <details class="more"${moreOpen}><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}

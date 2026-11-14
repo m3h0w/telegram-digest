@@ -8,10 +8,10 @@
 set -euo pipefail
 ZIP_URL="https://github.com/m3h0w/telegram-digest/archive/refs/heads/main.zip"
 DEST="$HOME/TelegramDigest"
-FILES="app.py export.py ui.html setup.sh README.md AI-SETUP.md HOW-TO-DIGEST.md .env.example"
+FILES="app.py export.py ui.html setup.sh service.pyw install.ps1 README.md AI-SETUP.md HOW-TO-DIGEST.md .env.example"
 
 if [ "$(uname)" != "Darwin" ]; then
-  echo "Sorry, Telegram Digest only runs on a Mac for now."; exit 1
+  echo "This installer is for a Mac. On Windows, paste this into PowerShell instead:"; echo "  irm https://raw.githubusercontent.com/m3h0w/telegram-digest/main/install.ps1 | iex"; exit 1
 fi
 
 if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>/dev/null; then

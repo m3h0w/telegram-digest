@@ -1,27 +1,34 @@
 # telegram-digest
 
-A small local web app at **http://localhost:8765** that keeps a read-only copy of
-the Telegram groups (and subgroups/topics) you choose, so Claude can write digests
-that link straight back to the original messages.
+A small local web app at **http://localhost:8765**, for Mac and Windows, that keeps a
+read-only copy of the Telegram groups (and subgroups/topics) you choose, so your AI
+(Claude or ChatGPT) can write digests that link straight back to the original messages.
 
 - **Read-only.** It only reads messages. It never sends anything and never marks
   messages as read, so your unread counts stay as they are.
 - **Your login stays private.** The Telegram session (a full key to your account)
   lives in `~/.config/telegram-digest/`, outside this repo, readable only by you.
-  It shows up in Telegram → Settings → Devices as "telegram-digest (Mac)".
-- Runs in the background via launchd, starts at login, and exports new messages
-  every 2 hours while the Mac is awake.
+  It shows up in Telegram → Settings → Devices as "telegram-digest (Mac)" or "(Windows)".
+- Runs in the background (launchd on a Mac, a Startup-folder runner on Windows), starts
+  at login, restarts itself after updates, and saves new messages every 2 hours while the
+  computer is awake.
 
 ## Install / update
 
-For anyone (Mac): paste into Terminal
+Mac: paste into Terminal
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/m3h0w/telegram-digest/main/install.sh | bash
 ```
 
+Windows 10/11: paste into PowerShell (no administrator rights needed; installs Python if missing)
+
+```powershell
+irm https://raw.githubusercontent.com/m3h0w/telegram-digest/main/install.ps1 | iex
+```
+
 Or hand your AI assistant this sentence and let it lead you:
-*"Help me set up Telegram Digest on my Mac. Follow this guide step by step:
+*"Help me set up Telegram Digest on my computer. Follow this guide step by step:
 https://raw.githubusercontent.com/m3h0w/telegram-digest/main/AI-SETUP.md"*
 
 From a clone of this repo: `bash setup.sh`.

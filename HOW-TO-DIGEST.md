@@ -61,7 +61,7 @@ In the chat:
 
 Write `digests/<YYYY-MM-DD-HHMM>.json`, named after the end of the period. It then
 appears at http://localhost:8765 → Digest, with clickable source links, the original
-messages and a Mac notification:
+messages and a notification on the computer:
 
 ```json
 {

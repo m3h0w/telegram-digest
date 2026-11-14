@@ -1,7 +1,7 @@
 # Telegram Digest: setup guide for AI assistants
 
 You (Claude, ChatGPT or another assistant) are helping a person who is **not technical**
-set up Telegram Digest on their **Mac**. It is a small app that keeps a read-only copy
+set up Telegram Digest on their **Mac or Windows PC**. It is a small app that keeps a read-only copy
 of the Telegram groups they choose on their own computer. Afterwards they can ask you for a
 digest any time: you read the saved messages and write a digest per group and subgroup,
 with links back to the original messages.
@@ -14,11 +14,30 @@ with links back to the original messages.
   yourself. Otherwise tell them exactly what to click.
 - **Never ask for their Telegram login code** (the 5-digit code Telegram sends). They type
   it themselves. Telegram tells people never to share it, and that's right.
-- They need: a Mac, Telegram on their phone (login codes arrive there), and about 15 minutes.
-  For automatic digests: a paid Claude plan or any ChatGPT plan (Step 6 sets this up).
-- It only works on a Mac. On Windows, stop and say it isn't supported yet.
+- They need: a Mac or a Windows 10/11 PC, Telegram on their phone (login codes arrive there),
+  and about 15 minutes. For automatic digests: a paid Claude plan or any ChatGPT plan (Step 6
+  sets this up). Ask which computer they use first; a few steps differ.
+- Linux and phones-only aren't supported.
 
 ## Step 1: Install the app
+
+**On Windows:**
+
+1. Ask them to open **PowerShell**: press the Windows key, type `PowerShell`, press Enter.
+   (Not "Run as administrator"; it isn't needed.)
+2. Ask them to paste this line and press Enter (or run it for them if you can run commands
+   on their PC):
+
+   ```
+   irm https://raw.githubusercontent.com/m3h0w/telegram-digest/main/install.ps1 | iex
+   ```
+3. If Python isn't installed, the installer installs it (a few minutes). If it says it
+   couldn't, follow what it prints: install Python from python.org with
+   "Add python.exe to PATH" ticked, open a new PowerShell window and paste the line again.
+4. When it finishes, the browser opens **http://localhost:8765**. The app starts by itself
+   whenever they log in. Ask them to bookmark the page.
+
+**On a Mac:**
 
 1. Ask them to open **Terminal**: press Cmd+Space, type `Terminal`, press Enter.
 2. Ask them to paste this line and press Enter. If you can run commands on their Mac
@@ -33,8 +52,10 @@ with links back to the original messages.
 4. When it finishes, the browser opens **http://localhost:8765**. If macOS shows
    "Background Items Added", that's this app; it starts automatically when they log in.
    Ask them to bookmark the page.
-5. The page opens on a short guided setup with five steps (Connect Telegram, Log in,
-   Choose groups, Digests, Phone). Steps 2 to 7 below match it; help them through it there.
+
+**Then, on either computer:** the page opens on a short guided setup with five steps (Connect
+Telegram, Log in, Choose groups, Digests, Phone). Steps 2 to 7 below match it; help them
+through it there.
 
 ## Step 2: Create their Telegram API keys (my.telegram.org)
 
@@ -63,8 +84,9 @@ In the app at http://localhost:8765, open **Setup**:
 2. **Telegram account:** enter the phone number, click *Send code*, then type the code
    from the Telegram app and click *Log in*. If they have a two-step verification password,
    the app asks for it next.
-   - This creates a read-only session that only lives on their Mac. It appears in
-     Telegram → Settings → Devices as "telegram-digest (Mac)" and can be ended there at any time.
+   - This creates a read-only session that only lives on their computer. It appears in
+     Telegram → Settings → Devices as "telegram-digest (Mac)" or "telegram-digest (Windows)"
+     and can be ended there at any time.
 
 ## Step 4: Choose groups
 
@@ -78,8 +100,9 @@ Still in **Setup → Groups & subgroups**:
 
 ## Step 5: Give the AI access to the folder (once)
 
-The app saves messages in the folder **TelegramDigest** in their home folder. The AI
-reads it directly, so there's no copying and pasting.
+The app saves messages in the folder **TelegramDigest** in their home folder (on Windows:
+`C:\Users\<their name>\TelegramDigest`). The AI reads it directly, so there's no copying
+and pasting.
 
 - **Claude (desktop app):** in a chat, click **Add folder** and choose `TelegramDigest`
   in their home folder.
@@ -100,10 +123,15 @@ installed by default, on any plan. Handle it for them; they shouldn't need to un
      plan, use ChatGPT/Codex if they have it, otherwise skip this step.
    - **ChatGPT:** Codex is included with every ChatGPT plan, including Free, Go and Plus.
      Having the ChatGPT desktop app isn't enough; the command-line tool is still needed.
-2. **Install it.** Run it yourself if you can run commands on their Mac; otherwise have
-   them paste it into Terminal:
-   - Claude: `curl -fsSL https://claude.ai/install.sh | bash`
-   - ChatGPT: `curl -fsSL https://chatgpt.com/codex/install.sh | sh`
+2. **Install it.** Run it yourself if you can run commands on their computer; otherwise have
+   them paste it into Terminal (Mac) or PowerShell (Windows):
+   - Claude, Mac: `curl -fsSL https://claude.ai/install.sh | bash`
+   - Claude, Windows: `irm https://claude.ai/install.ps1 | iex`
+   - ChatGPT, Mac: `curl -fsSL https://chatgpt.com/codex/install.sh | sh`
+   - ChatGPT, Windows: `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"`
+
+   On Windows, after installing, close PowerShell and open a new window before signing in,
+   so it finds the new command.
 3. **Sign in once.** This opens a browser window; *they* choose their account and allow
    access. Don't ask for their password.
    - Claude: run `claude`, choose the Claude account (subscription) login, finish in the
@@ -118,7 +146,7 @@ installed by default, on any plan. Handle it for them; they shouldn't need to un
    the sign-in in step 3.
 
 The app's own Setup also shows these steps (it asks "Which AI do you use?") if you're
-helping without access to their Mac.
+helping without access to their computer.
 
 The defaults are: automatically, every 4 hours if there's anything new, covering
 everything since the previous digest, with a notification when something needs
@@ -159,7 +187,7 @@ With automatic digests they don't need to do anything. They can also ask you any
 Digests are updates since the last digest by default, so they can be run as often as
 the person likes. If you can run scheduled tasks with access to this folder (for example
 scheduled work in the ChatGPT desktop app, or Claude's scheduled tasks), offer to make one
-every morning, or every few hours. Each new digest shows a Mac notification.
+every morning, or every few hours. Each new digest shows a notification on their computer.
 
 Ask them what usually matters to them (people, topics, kinds of requests) and write it into
 `what-matters.md`. You'll keep improving it from their feedback.
@@ -169,11 +197,18 @@ Every message has *Open in Telegram ↗*.
 
 ## Good to know (tell them if relevant)
 
-- New messages are fetched every 2 hours while the Mac is awake, and when they click *Export now*.
+- New messages are fetched every 2 hours while the computer is awake, and right before each digest.
 - It only reads. It never sends messages and never marks anything as read.
-- Everything stays on their Mac (in the folder `TelegramDigest` in their home folder).
-- **Update:** run the same Terminal line from Step 1 again. Settings and exports are kept.
-- **Uninstall:** in Terminal:
+- Everything stays on their computer (in the folder `TelegramDigest` in their home folder).
+- **Update:** run the same line from Step 1 again. Settings and saved messages are kept.
+- **Uninstall on Windows:** in PowerShell:
+
+  ```
+  Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" | Where-Object { $_.CommandLine -like '*TelegramDigest*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Remove-Item "$([Environment]::GetFolderPath('Startup'))\Telegram Digest.lnk"; Remove-Item -Recurse "$HOME\.config\telegram-digest"
+  ```
+  Then delete the `TelegramDigest` folder in their user folder, and end the
+  "telegram-digest (Windows)" session in Telegram → Settings → Devices.
+- **Uninstall on a Mac:** in Terminal:
 
   ```
   launchctl bootout gui/$(id -u)/local.telegram-digest; rm ~/Library/LaunchAgents/local.telegram-digest.plist; rm -r ~/.config/telegram-digest
@@ -181,4 +216,4 @@ Every message has *Open in Telegram ↗*.
   Then move the `TelegramDigest` folder to the Trash, and end the "telegram-digest (Mac)"
   session in Telegram → Settings → Devices.
 - **Troubleshooting:** if http://localhost:8765 doesn't load, run the Step 1 line again.
-  The log is in `~/TelegramDigest/logs/app.log`.
+  The log is in `TelegramDigest/logs/app.log` in their home folder.
