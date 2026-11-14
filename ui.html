@@ -9,7 +9,7 @@
 :root {
   --bg: #F3F5F1; --surface: #FFFFFF; --ink: #1E2420; --muted: #66706A; --faint: #98A29C; --line: #DDE2DC;
   --teal: #1F6F5C; --teal-soft: #E2EEE9; --sun: #D9940B; --sun-soft: #FBF0D6; --ok: #2E9E6B; --err: #B3261E;
-  --name-s: 55%; --name-l: 36%; --dot-l: 48%;
+  --name-s: 55%; --name-l: 36%; --dot-l: 48%; --tag-bg-l: 93%; --tag-fg-l: 30%;
   --ui: "Avenir Next", "Seravek", "Segoe UI", system-ui, sans-serif;
   --read: "Charter", "Iowan Old Style", Georgia, serif;
 }
@@ -17,7 +17,7 @@
   :root {
     --bg: #141916; --surface: #1B211E; --ink: #E4EAE6; --muted: #9AA5A0; --faint: #6E7974; --line: #2B332F;
     --teal: #6CC5AC; --teal-soft: #1E322B; --sun: #F0B43A; --sun-soft: #2D2614; --ok: #5CC28F; --err: #F28B82;
-    --name-l: 72%; --dot-l: 62%;
+    --name-l: 72%; --dot-l: 62%; --tag-bg-l: 22%; --tag-fg-l: 80%;
   }
 }
 * { box-sizing: border-box; }
@@ -152,8 +152,27 @@ details.advanced[open] > summary { margin-bottom: 10px; }
 .menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
 .menu button:hover, .menu button:focus-visible { background: var(--teal-soft); color: var(--teal); }
 .menu button .def { color: var(--faint); font-size: 12.5px; margin-left: 6px; }
-.tlabel { font: 12px var(--ui); color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-left: 8px; cursor: pointer; vertical-align: 1px; }
-.tlabel:hover { color: var(--teal); border-color: var(--teal); }
+.tlabel { font: 600 12px/1.7 var(--ui); color: hsl(var(--h) 45% var(--tag-fg-l)); background: hsl(var(--h) 55% var(--tag-bg-l)); border: 0; border-radius: 6px;
+          padding: 0 8px; margin-right: 8px; cursor: pointer; vertical-align: 1px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.tlabel .tg { font-weight: 400; opacity: .75; }
+.tlabel:hover { text-decoration: underline; }
+.who .nm { color: hsl(var(--h) var(--name-s) var(--name-l)); }
+.feedbar { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; margin: 0 0 18px; }
+.feedbar .fb-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.feedbar .fb-top .lbl { font-size: 13px; color: var(--muted); }
+.feedbar .fb-top .acts2 { display: flex; gap: 14px; align-items: center; font-size: 13px; }
+.chipgroup { margin: 6px 0 2px; }
+.chipgroup .gname { background: none; border: 0; padding: 0; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; margin-bottom: 4px; }
+.chipgroup .gname:hover { color: var(--teal); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 13px var(--ui); display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 10px 2px 8px; cursor: pointer;
+        border: 1px solid transparent; background: hsl(var(--h) 55% var(--tag-bg-l)); color: hsl(var(--h) 45% var(--tag-fg-l)); }
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--h) var(--name-s) var(--dot-l)); }
+.chip .c { opacity: .7; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="false"] { background: none; border-color: var(--line); color: var(--faint); text-decoration: line-through; }
+.chip[aria-pressed="false"]::before { background: var(--line); }
+.sortsel { width: auto; font-size: 13px; padding: 3px 8px; }
+.ph-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .nav-item.all { font-weight: 600; }
 .side-actions .note { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .working { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
@@ -173,6 +192,7 @@ details.advanced[open] > summary { margin-bottom: 10px; }
 .m:not(.first) .t { visibility: hidden; }
 .m:not(.first):hover .t { visibility: visible; }
 .who { font-weight: 600; font-size: 14.5px; color: hsl(var(--h) var(--name-s) var(--name-l)); }
+.m .who { color: inherit; }
 .fwd { font-weight: 400; font-size: 12px; color: var(--faint); margin-left: 6px; }
 .body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .q { display: block; border-left: 2px solid hsl(var(--h) var(--name-s) var(--dot-l)); padding: 1px 10px; margin: 3px 0 4px; font-size: 13.5px;
@@ -344,32 +364,49 @@ function threadOf(key, idx) {
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+// Messages from one person in a row (same subgroup, within 10 minutes) form a run.
+// Newest-first reverses the order of runs but keeps each run in reading order.
 function transcript(msgs, idx, opt = {}) {
-  let html = "", prev = null, lastDay = null;
+  const runs = [];
+  let prev = null;
   for (const m of msgs) {
-    const day = dayKey(m.date);
-    if (day !== lastDay) { html += `<div class="day-div">${esc(dayLabel(day))}</div>`; lastDay = day; prev = null; }
-    const cont = prev && prev.sender === m.sender && !m.reply_to && prev.topic_id === m.topic_id && prev.group_id === m.group_id &&
-      (new Date(m.date) - new Date(prev.date)) < 10 * 60000;
-    const label = opt.labels ? `<button class="tlabel" data-gid="${esc(m.group_id)}" data-topic="${esc(String(m.topic_id))}" title="${esc(m.group)}${m.topic ? " › " + esc(m.topic) : ""}: open this subgroup">${esc(m.topic || m.group)}</button>` : "";
-    const key = m.group_id + ":" + m.id;
-    let quote = "";
-    if (m.reply_to) {
-      const p = idx.byId.get(m.group_id + ":" + m.reply_to);
-      quote = p
-        ? `<a class="q" href="#${cssId(m.group_id + ":" + p.id)}" data-jump="${esc(m.group_id + ":" + p.id)}" style="--h:${hue(p.sender)}"><b>${esc(p.sender)}</b>${esc(trunc(oneLine(p.text || p.media), 110))}</a>`
-        : `<span class="q missing">Reply to an earlier message</span>`;
-    }
-    const n = (idx.kids.get(key) || []).length;
-    const media = m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : "";
-    html += `<div class="m${cont ? "" : " first"}${opt.refs && opt.refs.has(key) ? " ref" : ""}" id="${cssId(key)}">
-      <div class="t">${hhmm(m.date)}</div>
-      <div>${cont ? "" : `<div class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}${m.forwarded ? '<span class="fwd">forwarded</span>' : ""}${label}</div>`}${quote}<div class="body">${media}${richText(m.text)}</div>${n && opt.threads ? `<button class="rep" data-thread="${esc(key)}">${plural(n, "reply", "replies")}</button>` : ""}</div>
-      <div class="acts"><a href="${esc(m.app_link)}" title="Open this message in the Telegram app">Open in Telegram</a></div>
-    </div>`;
+    const cont = prev && dayKey(prev.date) === dayKey(m.date) && prev.sender === m.sender && !m.reply_to &&
+      prev.topic_id === m.topic_id && prev.group_id === m.group_id && (new Date(m.date) - new Date(prev.date)) < 10 * 60000;
+    if (cont) runs[runs.length - 1].push(m); else runs.push([m]);
     prev = m;
   }
+  if (opt.newestFirst) runs.reverse();
+  let html = "", lastDay = null;
+  for (const run of runs) {
+    const day = dayKey(run[0].date);
+    if (day !== lastDay) { html += `<div class="day-div">${esc(dayLabel(day))}</div>`; lastDay = day; }
+    run.forEach((m, i) => { html += msgRow(m, i === 0, idx, opt); });
+  }
   return `<div class="tx">${html}</div>`;
+}
+
+function topicTag(m, withGroup) {
+  const name = m.topic || m.group;
+  return `<button class="tlabel" style="--h:${hue(m.group_id + name)}" data-gid="${esc(m.group_id)}" data-topic="${esc(String(m.topic_id))}" title="Open ${esc(m.group)}${m.topic ? " › " + esc(m.topic) : ""}">${withGroup && m.topic ? `<span class="tg">${esc(m.group)} › </span>` : ""}${esc(name)}</button>`;
+}
+
+function msgRow(m, first, idx, opt) {
+  const key = m.group_id + ":" + m.id;
+  let quote = "";
+  if (m.reply_to) {
+    const p = idx.byId.get(m.group_id + ":" + m.reply_to);
+    quote = p
+      ? `<a class="q" href="#${cssId(m.group_id + ":" + p.id)}" data-jump="${esc(m.group_id + ":" + p.id)}" style="--h:${hue(p.sender)}"><b>${esc(p.sender)}</b>${esc(trunc(oneLine(p.text || p.media), 110))}</a>`
+      : `<span class="q missing">Reply to an earlier message</span>`;
+  }
+  const n = (idx.kids.get(key) || []).length;
+  const media = m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : "";
+  const head = first ? `<div class="who">${opt.labels ? topicTag(m, opt.withGroup) : ""}<span class="nm" style="--h:${hue(m.sender)}">${esc(m.sender)}</span>${m.forwarded ? '<span class="fwd">forwarded</span>' : ""}</div>` : "";
+  return `<div class="m${first ? " first" : ""}${opt.refs && opt.refs.has(key) ? " ref" : ""}" id="${cssId(key)}">
+    <div class="t">${hhmm(m.date)}</div>
+    <div>${head}${quote}<div class="body">${media}${richText(m.text)}</div>${n && opt.threads ? `<button class="rep" data-thread="${esc(key)}">${plural(n, "reply", "replies")}</button>` : ""}</div>
+    <div class="acts"><a href="${esc(m.app_link)}" title="Open this message in the Telegram app">Open in Telegram</a></div>
+  </div>`;
 }
 
 function flashTo(key) {
@@ -381,7 +418,12 @@ function flashTo(key) {
 }
 
 // ---------- state ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("tgd." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("tgd." + k, JSON.stringify(v)); } catch (e) { /* storage unavailable: keep in memory */ } },
+};
 const S = { tab: null, status: {}, msgRange: "24h", msgIdx: null, sel: { gid: "*", topic: "*" }, thread: null, q: "",
+            newestFirst: store.get("newestFirst", true), hidden: new Set(store.get("hiddenTopics", [])),
             digests: [], digestName: null, digest: null, dIdx: null, short: new Map(), open: new Set(), dates: [] };
 let FB = {};
 const ICON_MORE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 14V2.5"/><path d="M3.5 3h8l-1.6 2.7L11.5 8.5h-8"/></svg>`;
@@ -668,6 +710,13 @@ function drawMessages() {
   let nav = idx.msgs.length ? `<button class="nav-item all${isSel("*", "*") ? " on" : ""}" data-gid="*" data-topic="*"><span>All messages</span><span class="n">${idx.msgs.length}</span></button>` : "";
   let navSel = idx.msgs.length ? `<option value="*|*"${isSel("*", "*") ? " selected" : ""}>All messages (${idx.msgs.length})</option>` : "";
   for (const g of groups) {
+    const plain = g.topics.size === 1 && [...g.topics.values()][0].title === "Chat";
+    if (plain) {   // a group without subgroups: one entry is enough
+      const t = [...g.topics.values()][0];
+      nav += `<div class="nav-group">${esc(g.title)}</div><button class="nav-item${isSel(g.id, t.key) ? " on" : ""}" data-gid="${esc(g.id)}" data-topic="${esc(t.key)}"><span>All messages in this group</span><span class="n">${g.count}</span></button>`;
+      navSel += `<option value="${esc(g.id + "|" + t.key)}"${isSel(g.id, t.key) ? " selected" : ""}>${esc(g.title)} (${g.count})</option>`;
+      continue;
+    }
     nav += `<div class="nav-group">${esc(g.title)}</div>`;
     if (multi) {
       nav += `<button class="nav-item${isSel(g.id, "*") ? " on" : ""}" data-gid="${esc(g.id)}" data-topic="*"><span>All of this group</span><span class="n">${g.count}</span></button>`;
@@ -695,14 +744,22 @@ function drawMessages() {
       ${transcript(msgs, idx, { threads: false, refs: new Set([S.thread]) })}`;
   } else if (S.sel.topic === "*") {
     const g = S.sel.gid === "*" ? null : idx.groups.get(S.sel.gid);
-    const msgs = g ? [].concat(...[...g.topics.values()].map(t => t.msgs)).sort((a, b) => (a.date < b.date ? -1 : 1)) : idx.msgs;
-    const nTop = g ? g.topics.size : [...idx.groups.values()].reduce((n, x) => n + x.topics.size, 0);
-    main = `<header class="ph"><h1>${g ? esc(g.title) : "All messages"}</h1><p class="sub">${plural(msgs.length, "message", "messages")} from ${plural(nTop, "subgroup", "subgroups")} ${esc(r.label)}, oldest first.</p></header>
-      ${transcript(msgs, idx, { threads: true, labels: true })}`;
+    const inView = g ? [g] : sortedGroups(idx);
+    const all = [].concat(...inView.map(x => [].concat(...[...x.topics.values()].map(t => t.msgs)))).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const shown = all.filter(m => !S.hidden.has(m.group_id + ":" + m.topic_id));
+    const topics = [].concat(...inView.map(x => sortedTopics(x).map(t => ({ g: x, t }))));
+    const nOn = topics.filter(({ g: x, t }) => !S.hidden.has(x.id + ":" + t.key)).length;
+    main = `<header class="ph ph-row"><div><h1>${g ? esc(g.title) : "All messages"}</h1>
+        <p class="sub">${shown.length === all.length ? plural(all.length, "message", "messages") : `${shown.length} of ${plural(all.length, "message", "messages")}`} from ${nOn === topics.length ? plural(topics.length, "subgroup", "subgroups") : `${nOn} of ${plural(topics.length, "subgroup", "subgroups")}`} ${esc(r.label)}.</p></div>
+        ${sortControl()}</header>
+      ${feedBar(inView)}
+      ${shown.length ? transcript(shown, idx, { threads: true, labels: true, withGroup: !g && inView.length > 1, newestFirst: S.newestFirst })
+        : `<div class="empty"><h1>Everything is hidden</h1><p>Turn subgroups back on above, or <button class="link" data-chips="all">show all</button>.</p></div>`}`;
   } else {
     const g = idx.groups.get(S.sel.gid), t = g.topics.get(S.sel.topic);
-    main = `<header class="ph"><h1>${esc(t.title)}</h1><p class="sub">${esc(g.title)}, ${plural(t.msgs.length, "message", "messages")} ${esc(r.label)}.</p></header>
-      ${transcript(t.msgs, idx, { threads: true })}`;
+    const plainT = t.title === "Chat";
+    main = `<header class="ph ph-row"><div><h1>${esc(plainT ? g.title : t.title)}</h1><p class="sub">${plainT ? "" : esc(g.title) + ", "}${plural(t.msgs.length, "message", "messages")} ${esc(r.label)}.</p></div>${sortControl()}</header>
+      ${transcript(t.msgs, idx, { threads: true, newestFirst: S.newestFirst })}`;
   }
   $("#view").innerHTML = `<div class="layout">
     <aside class="side">
@@ -720,9 +777,32 @@ function drawMessages() {
   const mn = $("#mnav"); if (mn) mn.onchange = e => { const [gid, topic] = e.target.value.split("|"); S.sel = { gid, topic }; S.thread = null; S.q = ""; drawMessages(); };
 }
 
+function sortControl() {
+  return `<select class="sortsel" data-sort aria-label="Order of messages"><option value="new"${S.newestFirst ? " selected" : ""}>Newest first</option><option value="old"${S.newestFirst ? "" : " selected"}>Oldest first</option></select>`;
+}
+
+function feedBar(groups) {
+  const multi = groups.length > 1;
+  const body = groups.map(g => {
+    const ts = sortedTopics(g);
+    if (ts.length < 2 && !multi) return "";
+    const chips = ts.map(t => {
+      const k = g.id + ":" + t.key, on = !S.hidden.has(k);
+      return `<button class="chip" style="--h:${hue(g.id + (t.title === "Chat" ? g.title : t.title))}" data-chip="${esc(k)}" aria-pressed="${on}" title="${on ? "Hide" : "Show"} ${esc(t.title)}">${esc(t.title === "Chat" ? g.title : t.title)} <span class="c">${t.msgs.length}</span></button>`;
+    }).join("");
+    return `<div class="chipgroup">${multi ? `<button class="gname" data-chipgroup="${esc(g.id)}" title="Show or hide all of ${esc(g.title)}">${esc(g.title)}</button>` : ""}<div class="chips">${chips}</div></div>`;
+  }).join("");
+  if (!body.trim()) return "";
+  return `<div class="feedbar"><div class="fb-top"><span class="lbl">Show messages from</span>
+    <span class="acts2"><button class="link" data-chips="all">Show all</button><button class="link" data-chips="none">Hide all</button></span></div>${body}</div>`;
+}
+
+function saveHidden() { store.set("hiddenTopics", [...S.hidden]); }
+
 function searchResults(idx) {
   const q = S.q.toLowerCase();
   const hits = idx.msgs.filter(m => (m.text + " " + m.sender + " " + m.media).toLowerCase().includes(q));
+  if (S.newestFirst) hits.reverse();
   if (!hits.length) return `<div class="empty"><h1>No matches</h1><p>Nothing ${esc(rangeFor(S.msgRange).label)} mentions “${esc(S.q)}”.</p></div>`;
   const re = new RegExp(S.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
   const mark = s => esc(s).replace(re, x => `<mark>${x}</mark>`);
@@ -740,6 +820,22 @@ document.addEventListener("click", e => {
   if (mb) { const m = mb.nextElementSibling; m.hidden = !m.hidden; if (!m.hidden) { const f = m.querySelector("button"); if (f) f.focus(); } return; }
   const rp = e.target.closest("[data-runp]");
   if (rp) { startDigest(rp.dataset.runp === "since_last" ? null : rp.dataset.runp); return; }
+  const chip = e.target.closest("[data-chip],[data-chips],[data-chipgroup]");
+  if (chip) {
+    const d = chip.dataset, idx = S.msgIdx;
+    const keysOf = g => [...g.topics.values()].map(t => g.id + ":" + t.key);
+    if (d.chip) { S.hidden.has(d.chip) ? S.hidden.delete(d.chip) : S.hidden.add(d.chip); }
+    else if (d.chipgroup) {
+      const ks = keysOf(idx.groups.get(d.chipgroup)), anyOn = ks.some(k => !S.hidden.has(k));
+      ks.forEach(k => anyOn ? S.hidden.add(k) : S.hidden.delete(k));
+    } else {
+      const groups = S.sel.gid === "*" ? [...idx.groups.values()] : [idx.groups.get(S.sel.gid)];
+      groups.forEach(g => keysOf(g).forEach(k => d.chips === "all" ? S.hidden.delete(k) : S.hidden.add(k)));
+    }
+    saveHidden();
+    const y = window.scrollY; drawMessages(); window.scrollTo(0, y);
+    return;
+  }
   const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto],[data-digest],[data-fb],[data-since],[data-run]");
   if (!t) return;
   const d = t.dataset;
@@ -805,6 +901,9 @@ document.addEventListener("mouseout", e => { if (e.target.closest(".pip a[data-k
 document.addEventListener("focusin", e => { const a = e.target.closest(".pip a[data-key]"); a ? showPop(a) : hidePop(); });
 addEventListener("scroll", hidePop, { passive: true });
 document.addEventListener("keydown", e => { if (e.key === "Escape") $$(".menu").forEach(m => m.hidden = true); });
+document.addEventListener("change", e => {
+  if (e.target.matches("[data-sort]")) { S.newestFirst = e.target.value === "new"; store.set("newestFirst", S.newestFirst); drawMessages(); }
+});
 
 // ---------- Setup (first run) and Settings ----------
 let GROUPS = null, SEL = null, TOPICS = {}, NEED_PW = false, SETTINGS = null, PICKER_OPEN = false, ORDER = [];
