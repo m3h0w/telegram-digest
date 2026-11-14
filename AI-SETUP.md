@@ -15,6 +15,7 @@ with links back to the original messages.
 - **Never ask for their Telegram login code** (the 5-digit code Telegram sends). They type
   it themselves. Telegram tells people never to share it, and that's right.
 - They need: a Mac, Telegram on their phone (login codes arrive there), and about 15 minutes.
+  For automatic digests: a paid Claude plan or any ChatGPT plan (Step 6 sets this up).
 - It only works on a Mac. On Windows, stop and say it isn't supported yet.
 
 ## Step 1: Install the app
@@ -86,21 +87,42 @@ reads it directly, so there's no copying and pasting.
   Switch to **Work** (or **Codex**), open a folder and choose `TelegramDigest` in their
   home folder, and allow access when asked.
 
-## Step 6: Automatic digests (recommended)
+## Step 6: Automatic digests (do this by default)
 
-The app can write digests by itself, using the person's own AI plan (no API keys), with
-one of these command-line tools. Install the one that matches their plan, then sign in once:
+The app writes digests by itself using the person's own AI plan, through a small
+command-line tool: **Claude Code** for Claude, **Codex** for ChatGPT. Nobody has these
+installed by default, on any plan. Handle it for them; they shouldn't need to understand it.
 
-- **Claude plan:** in Terminal run `curl -fsSL https://claude.ai/install.sh | bash`, then
-  run `claude` and sign in with their Claude account. Type `/exit` when done.
-- **ChatGPT account:** in Terminal run `curl -fsSL https://chatgpt.com/codex/install.sh | sh`,
-  then run `codex` and choose *Sign in with ChatGPT*. Press Ctrl+C when done.
+1. **Ask which AI they pay for:** "Do you use Claude or ChatGPT?" If both, use the one
+   they prefer. Explain in one sentence: "This lets the app use your plan to write
+   digests. There's no extra cost."
+   - **Claude:** Claude Code needs a paid Claude plan (Pro or higher). On Claude's free
+     plan, use ChatGPT/Codex if they have it, otherwise skip this step.
+   - **ChatGPT:** Codex is included with every ChatGPT plan, including Free, Go and Plus.
+     Having the ChatGPT desktop app isn't enough; the command-line tool is still needed.
+2. **Install it.** Run it yourself if you can run commands on their Mac; otherwise have
+   them paste it into Terminal:
+   - Claude: `curl -fsSL https://claude.ai/install.sh | bash`
+   - ChatGPT: `curl -fsSL https://chatgpt.com/codex/install.sh | sh`
+3. **Sign in once.** This opens a browser window; *they* choose their account and allow
+   access. Don't ask for their password.
+   - Claude: run `claude`, choose the Claude account (subscription) login, finish in the
+     browser, then type `/exit`.
+   - ChatGPT: run `codex login` and choose *Sign in with ChatGPT*.
+   - Never set up an API key for this. The app deliberately uses their plan instead.
+4. **Let the app find it.** Run the install line from Step 1 again (it only refreshes the
+   app; settings and messages are kept).
+5. **Check.** In the app, **Settings → Digests → Written by** should say "Automatic choice
+   (now: Claude Code)" or "(now: Codex)". Click **Write a digest now** and confirm a digest
+   appears within a few minutes. If Settings shows "… failed … Is it signed in?", repeat
+   the sign-in in step 3.
 
-Then run the install line from Step 1 again so the app picks the tool up. In the app,
-**Setup → Digests** should now say which tool writes the digests. The defaults are:
-automatically, every 4 hours if there's anything new, covering everything since the previous
-digest, with a notification when something needs attention. Everything there can be
-changed, including "Only when I ask". **Write a digest now** makes one straight away.
+The app's own Setup also shows these steps (it asks "Which AI do you use?") if you're
+helping without access to their Mac.
+
+The defaults are: automatically, every 4 hours if there's anything new, covering
+everything since the previous digest, with a notification when something needs
+attention. All of it can be changed in **Settings → Digests**, including "Only when I ask".
 
 If they'd rather not install anything, skip this step: you can write digests yourself
 when they ask (next step).

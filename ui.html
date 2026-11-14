@@ -125,6 +125,8 @@ textarea { font: 14px/1.5 var(--ui); width: 100%; min-height: 260px; padding: 10
 .check { display: flex; gap: 10px; align-items: center; margin: 4px 0 8px; cursor: pointer; }
 .quote { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; overflow-wrap: anywhere; user-select: all; }
 .quote.inline { display: inline; padding: 2px 6px; }
+.ehelp { margin: 4px 0 10px; }
+.ehelp .howto .quote { margin: 6px 0; }
 .statusline { display: flex; gap: 10px; align-items: center; font-weight: 600; }
 .followed { margin: 4px 0 12px; padding-left: 1.1em; }
 .pref { display: block; margin: 12px 0; }
@@ -820,6 +822,13 @@ document.addEventListener("click", e => {
   if (mb) { const m = mb.nextElementSibling; m.hidden = !m.hidden; if (!m.hidden) { const f = m.querySelector("button"); if (f) f.focus(); } return; }
   const rp = e.target.closest("[data-runp]");
   if (rp) { startDigest(rp.dataset.runp === "since_last" ? null : rp.dataset.runp); return; }
+  const ip = e.target.closest("[data-ipick]");
+  if (ip) {
+    INSTALL_PICK = ip.dataset.ipick;
+    const box = ip.closest(".ehelp");
+    if (box) box.outerHTML = engineHelp();
+    return;
+  }
   const chip = e.target.closest("[data-chip],[data-chips],[data-chipgroup]");
   if (chip) {
     const d = chip.dataset, idx = S.msgIdx;
@@ -1005,9 +1014,8 @@ function renderDigestStep(s) {
       <p class="muted">You can change all of this any time in Settings.</p>
       <div class="row"><button class="btn" id="finish">Finish and write my first digest</button><span class="errc" id="werr"></span></div>`;
   } else {
-    body = `<p>To have digests written for you, this Mac needs <b>Claude Code</b> (if you use Claude) or <b>Codex</b> (if you use ChatGPT), signed in to your account. Your AI assistant can install it for you. Ask it:</p>
-      <p class="quote">Install Claude Code (or Codex) on my Mac and sign me in, following step 6 of ${esc(GUIDE_URL)}</p>
-      <div class="row"><button class="btn" id="recheck">I've installed it, check again</button><button class="btn ghost" id="skip">Skip, I'll ask my AI for digests</button><span class="errc" id="werr"></span></div>`;
+    body = `${engineHelp()}
+      <div class="row"><button class="btn" id="recheck">Check again</button><button class="btn ghost" id="skip">Skip, I'll ask my AI for digests</button><span class="errc" id="werr"></span></div>`;
   }
   $("#view").innerHTML = wizardFrame(4, "How should digests be made?", "", body);
   on("recheck", async () => { await refreshStatus(); renderSetup(); });
@@ -1084,6 +1092,32 @@ function engineSelect(st, found) {
   return `<select data-set="digest_engine">${opts.map(([v, l]) => `<option value="${v}"${st.digest_engine === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
 }
 
+// ----- help installing Claude Code or Codex -----
+const INSTALL = {
+  claude: { tool: "Claude Code", plan: "Claude", line: "curl -fsSL https://claude.ai/install.sh | bash", signin: "claude",
+            signinText: "A browser window opens: choose your Claude account and allow access. Then type /exit and close Terminal.",
+            note: "Needs a paid Claude plan (Pro or higher). On the free plan, choose ChatGPT instead or ask your AI for digests." },
+  codex: { tool: "Codex", plan: "ChatGPT", line: "curl -fsSL https://chatgpt.com/codex/install.sh | sh", signin: "codex login",
+           signinText: "A browser window opens: choose “Sign in with ChatGPT” and allow access. Then close Terminal.",
+           note: "Included with every ChatGPT plan. The ChatGPT app alone isn't enough; this adds the part the digest uses." },
+};
+let INSTALL_PICK = null;
+function engineHelp() {
+  const pick = INSTALL_PICK, i = pick && INSTALL[pick];
+  return `<div class="ehelp">
+    <p>Digests are written by your own AI, using the plan you already pay for. That needs one small extra piece on this Mac. Which AI do you use?</p>
+    <div class="row"><button class="btn${pick === "claude" ? "" : " ghost"}" data-ipick="claude">Claude</button><button class="btn${pick === "codex" ? "" : " ghost"}" data-ipick="codex">ChatGPT</button></div>
+    ${i ? `<ol class="howto">
+        <li>Open <b>Terminal</b> (press Cmd+Space, type Terminal, press Enter), paste this line and press Enter:
+          <p class="quote">${esc(i.line)}</p></li>
+        <li>When it's done, paste this and press Enter to sign in:<p class="quote">${esc(i.signin)}</p>${esc(i.signinText)}</li>
+        <li>Click <b>Check again</b> below.</li>
+      </ol>
+      <p class="muted small">${esc(i.note)} If Check again still doesn't find it, run the Telegram Digest install line once more, then check again.</p>` : ""}
+    <p class="muted small">Or let your AI assistant do it: “Set up automatic digests for Telegram Digest on my Mac, following step 6 of ${esc(GUIDE_URL)}”</p>
+  </div>`;
+}
+
 // ----- settings -----
 const SCHEDULES = [["h1", "Every hour"], ["h2", "Every 2 hours"], ["h4", "Every 4 hours"], ["h8", "Every 8 hours"], ["h12", "Every 12 hours"],
                    ["daily", "Once a day"], ["after_fetch", "Whenever new messages come in"]];
@@ -1132,9 +1166,9 @@ function renderSettings(s) {
         ${st.digest_schedule === "daily" ? `<label class="opt"><span>At</span><input type="time" data-set="digest_daily_at" value="${esc(st.digest_daily_at)}"></label>` : ""}` : ""}
       <label class="opt"><span>Notify me</span>${sel("notify", [["attention", "When something needs attention"], ["all", "For every new digest"], ["off", "Never"]])}</label>
       <label class="opt"><span>Written by</span>${engineSelect(st, found)}</label>
-      ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on this Mac. Pick another option, or install it (see the setup guide).</p>` : ""}
-      ${!d.engine && auto ? `<p class="errc">No AI tool found on this Mac, so digests can't be written automatically yet.</p>
-        <p>Ask your AI assistant: <span class="quote inline">Install Claude Code (or Codex) on my Mac and sign me in, following step 6 of ${esc(GUIDE_URL)}</span></p>` : ""}
+      ${st.digest_engine !== "auto" && !found[st.digest_engine] ? `<p class="errc">${st.digest_engine === "claude" ? "Claude Code" : "Codex"} isn't installed on this Mac yet. Choose another option, or install it as shown below.</p>` : ""}
+      ${!d.engine && auto ? `<p class="errc">Automatic digests are on, but this Mac can't write them yet.</p>${engineHelp()}
+        <div class="row"><button class="btn" id="recheck2">Check again</button></div>` : ""}
       <details class="more"><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
         <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
@@ -1173,6 +1207,7 @@ function renderSettings(s) {
   };
   on("exnow", checkNow(null));
   on("exre", () => checkNow(+$("#olderdays").value)());
+  on("recheck2", async () => { const s2 = await refreshStatus(); renderSettings(s2); });
   // digest settings
   const save = async patch => {
     try { SETTINGS = await api("/api/settings", patch); const s2 = await refreshStatus(); renderSettings(s2); }
