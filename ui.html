@@ -75,10 +75,12 @@ select, input[type=text], input[type=password], input[type=search] {
 ul.pts { font-family: var(--read); font-size: 17.5px; line-height: 1.6; margin: 10px 0 8px; padding-left: 1.15em; }
 ul.pts li { margin: 7px 0; padding-left: 2px; }
 ul.pts li::marker { color: var(--faint); }
-.pip { font: 12px/1.6 var(--ui); display: inline-flex; align-items: center; gap: 5px; padding: 0 8px 0 6px; margin-left: 5px; border-radius: 999px;
-       border: 1px solid var(--line); background: var(--surface); color: var(--muted); text-decoration: none; vertical-align: 2px; white-space: nowrap; }
-.pip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h) var(--name-s) var(--dot-l)); }
-.pip:hover, .pip:focus-visible { border-color: var(--teal); color: var(--teal); }
+.pip { font: 12px/1.6 var(--ui); display: inline-flex; align-items: center; gap: 3px; padding: 0 6px 0 7px; margin: 0 0 0 5px; border-radius: 999px;
+       border: 1px solid var(--line); background: var(--surface); color: var(--muted); vertical-align: 2px; white-space: nowrap; }
+.pip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h) var(--name-s) var(--dot-l)); margin-right: 2px; }
+.pip .pn { font-weight: 600; color: hsl(var(--h) var(--name-s) var(--name-l)); margin-right: 2px; }
+.pip a { color: var(--muted); text-decoration: none; padding: 0 2px; border-radius: 4px; font-variant-numeric: tabular-nums; }
+.pip a:hover, .pip a:focus-visible { color: var(--teal); text-decoration: underline; }
 .toggle { background: none; border: 0; padding: 4px 0; color: var(--teal); cursor: pointer; font-size: 14px; }
 .also { border-top: 1px solid var(--line); padding: 22px 0; }
 .also h2 { font-size: 15px; margin: 0 0 8px; }
@@ -303,7 +305,7 @@ function flashTo(key) {
 
 // ---------- state ----------
 const S = { tab: null, status: {}, msgRange: "24h", msgIdx: null, sel: null, thread: null, q: "",
-            digests: [], digestName: null, digest: null, dIdx: null, open: new Set(), dates: [] };
+            digests: [], digestName: null, digest: null, dIdx: null, short: new Map(), open: new Set(), dates: [] };
 let DIGEST_TX = {};
 
 // ---------- health ----------
@@ -352,7 +354,7 @@ async function renderDigest() {
   view.innerHTML = `<div class="layout single"><main class="main"><p class="muted">Loading…</p></main></div>`;
   const d = await api("/api/digest?name=" + encodeURIComponent(S.digestName));
   const msgs = await api(`/api/messages?from=${encodeURIComponent(d.from)}&to=${encodeURIComponent(d.to)}`);
-  S.digest = d; S.dIdx = index(msgs); S.open = new Set();
+  S.digest = d; S.dIdx = index(msgs); S.short = shortNames(S.dIdx); S.open = new Set();
   drawDigest();
 }
 
@@ -377,12 +379,38 @@ function digestSections() {
   return out;
 }
 
-function pip(ref, gid) {
-  const key = gid + ":" + ref, m = S.dIdx.byId.get(key);
-  if (!m) return `<a class="pip" style="--h:0" href="tg://privatepost?channel=${esc(String(gid).replace(/^-100/, ""))}&post=${esc(ref)}">#${esc(ref)}</a>`;
-  return `<a class="pip" style="--h:${hue(m.sender)}" href="${esc(m.app_link)}" data-key="${esc(key)}" aria-label="${esc(m.sender)} at ${hhmm(m.date)}, open in Telegram">${hhmm(m.date)}</a>`;
+function shortNames(idx) {
+  const byFirst = new Map(), out = new Map();
+  for (const m of idx.msgs) {
+    const f = m.sender.split(/\s+/)[0];
+    if (!byFirst.has(f)) byFirst.set(f, new Set());
+    byFirst.get(f).add(m.sender);
+  }
+  for (const [f, names] of byFirst) for (const n of names) {
+    const parts = n.split(/\s+/);
+    out.set(n, trunc(names.size > 1 && parts[1] ? `${f} ${parts[1][0]}.` : f, 16));
+  }
+  return out;
 }
-const points = (bullets, gid) => `<ul class="pts">${bullets.map(b => `<li>${bold(b.text)}${(b.refs || []).map(r => pip(r, gid)).join("")}</li>`).join("")}</ul>`;
+
+// Source links for one point: one pill per sender, with a link per message time.
+function pips(refs, gid) {
+  const items = (refs || []).map(r => ({ r, m: S.dIdx.byId.get(gid + ":" + r) }));
+  const found = items.filter(x => x.m).sort((a, b) => (a.m.date < b.m.date ? -1 : 1));
+  let html = "";
+  for (let i = 0; i < found.length;) {
+    const who = found[i].m.sender, links = [];
+    for (; i < found.length && found[i].m.sender === who; i++) {
+      const m = found[i].m;
+      links.push(`<a href="${esc(m.app_link)}" data-key="${esc(gid + ":" + m.id)}" aria-label="${esc(m.sender)} at ${hhmm(m.date)}, open in Telegram">${hhmm(m.date)}</a>`);
+    }
+    html += `<span class="pip" style="--h:${hue(who)}"><span class="pn">${esc(S.short.get(who) || who)}</span>${links.join("")}</span>`;
+  }
+  const ch = esc(String(gid).replace(/^-100/, ""));
+  html += items.filter(x => !x.m).map(x => `<span class="pip" style="--h:0"><a href="tg://privatepost?channel=${ch}&post=${esc(x.r)}">#${esc(x.r)}</a></span>`).join("");
+  return html;
+}
+const points = (bullets, gid) => `<ul class="pts">${bullets.map(b => `<li>${bold(b.text)}${pips(b.refs, gid)}</li>`).join("")}</ul>`;
 
 function convBlock(id, msgs, refs, labels) {
   DIGEST_TX[id] = { msgs, refs, labels };
@@ -575,9 +603,9 @@ function showPop(a) {
   if (y + h > innerHeight - 12) y = r.top - h - 8;
   pop.style.left = x + "px"; pop.style.top = Math.max(12, y) + "px";
 }
-document.addEventListener("mouseover", e => { const a = e.target.closest(".pip[data-key]"); if (a) showPop(a); });
-document.addEventListener("mouseout", e => { if (e.target.closest(".pip[data-key]")) hidePop(); });
-document.addEventListener("focusin", e => { const a = e.target.closest(".pip[data-key]"); a ? showPop(a) : hidePop(); });
+document.addEventListener("mouseover", e => { const a = e.target.closest(".pip a[data-key]"); if (a) showPop(a); });
+document.addEventListener("mouseout", e => { if (e.target.closest(".pip a[data-key]")) hidePop(); });
+document.addEventListener("focusin", e => { const a = e.target.closest(".pip a[data-key]"); a ? showPop(a) : hidePop(); });
 addEventListener("scroll", hidePop, { passive: true });
 
 // ---------- Setup ----------
