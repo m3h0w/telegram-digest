@@ -177,17 +177,29 @@ def newest_digest_to():
     return items[0][1].get("to") if items else None
 
 
-def digest_period(st=None):
+PERIODS = ("since_last", "last_24h", "today", "yesterday", "last_3d", "last_7d")
+
+
+def digest_period(st=None, override=None):
     st = st or load_settings()
+    key = override or st.get("digest_period", "since_last")
     now = dt.datetime.now().astimezone()
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if key == "today":
+        return midnight, now
+    if key == "yesterday":
+        return midnight - dt.timedelta(days=1), midnight
+    if key == "last_3d":
+        return now - dt.timedelta(days=3), now
+    if key == "last_7d":
+        return now - dt.timedelta(days=7), now
     last = newest_digest_to()
-    if st.get("digest_period") == "since_last" and last:
+    if key == "since_last" and last:
         start = dt.datetime.fromisoformat(last)
         if now - start > dt.timedelta(days=7):      # don't let one update cover weeks
             start = now - dt.timedelta(days=7)
-    else:
-        start = now - dt.timedelta(days=1)
-    return start, now
+        return start, now
+    return now - dt.timedelta(days=1), now
 
 
 DIGEST_PROMPT = """You are running unattended in the Telegram Digest folder to write a digest. Nobody can answer questions.
@@ -362,7 +374,7 @@ class Telegram:
         finally:
             self.exporting = False
 
-    async def run_digest(self, auto=False):
+    async def run_digest(self, auto=False, period=None):
         if self.digesting:
             return {"busy": True}
         self.digesting = True
@@ -383,9 +395,10 @@ class Telegram:
             if not kind:
                 ds.update(last_ok=False, last_message="No AI tool found. Install Claude Code or Codex and sign in once.")
                 return {"error": ds["last_message"]}
-            start, end = digest_period(st)
+            start, end = digest_period(st, period)
             if not core.read_messages(start, end):
-                ds.update(last_ok=True, last_message="Nothing new since the last digest.")
+                ds.update(last_ok=True, last_message="No messages in that period." if period and period != "since_last"
+                          else "Nothing new since the last digest.")
                 return {"ok": True, "message": ds["last_message"]}
             before = {n for n, _ in _read_digests()}
             code, out, err = await asyncio.to_thread(run_engine, kind, path, start, end)
@@ -604,7 +617,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/feedback": lambda: self._feedback(body),
             "/api/settings": lambda: self._save_settings(body),
             "/api/seen": lambda: self._seen(body),
-            "/api/digest/run": lambda: self._run_digest(),
+            "/api/digest/run": lambda: self._run_digest(body),
         }
         if p in routes:
             return self._run(routes[p])
@@ -651,10 +664,13 @@ class Handler(BaseHTTPRequestHandler):
         save_settings(st)
         return st
 
-    def _run_digest(self):
+    def _run_digest(self, body):
+        period = body.get("period") or None
+        if period is not None and period not in PERIODS:
+            raise UserError("Unknown period.")
         if TG.digesting:
             return {"busy": True}
-        TG.submit(TG.run_digest())
+        TG.submit(TG.run_digest(period=period))
         return {"started": True}
 
     def _seen(self, body):

@@ -90,11 +90,13 @@ ul.pts li::marker { color: var(--faint); }
 .newer b { font-weight: 600; }
 .attention .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .attention .head .link { font-size: 13px; }
-.fb { font: 12px var(--ui); background: none; border: 0; padding: 0 4px; margin-left: 6px; color: var(--faint); cursor: pointer; display: none; vertical-align: 2px; white-space: nowrap; }
-li:hover .fb, li:focus-within .fb, .fb.done { display: inline; }
-.fb:hover { color: var(--teal); text-decoration: underline; }
-.fb.done { color: var(--ok); cursor: default; text-decoration: none; }
-@media (hover: none) { .fb { display: inline; } }
+/* always in the layout (so nothing moves on hover); just quieter until you point at the line */
+.fb { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-left: 4px; padding: 0; border: 0; border-radius: 6px;
+      background: none; color: var(--faint); opacity: .45; cursor: pointer; vertical-align: -4px; }
+.fb svg { width: 14px; height: 14px; }
+li:hover .fb, .fb:focus-visible { opacity: 1; }
+.fb:hover { color: var(--teal); background: var(--teal-soft); }
+.fb.done { opacity: 1; color: var(--ok); cursor: default; background: none; }
 .nav-item .nd { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block; margin-right: 6px; vertical-align: 1px; }
 .nav-item .dsub { display: block; font-size: 12px; color: var(--faint); font-weight: 400; }
 textarea { font: 14px/1.5 var(--ui); width: 100%; min-height: 260px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); resize: vertical; }
@@ -138,7 +140,21 @@ details.advanced[open] > summary { margin-bottom: 10px; }
 .opt { display: grid; grid-template-columns: 180px minmax(0, 260px); align-items: center; gap: 14px; margin: 8px 0; }
 .opt > span { color: var(--muted); }
 .side-actions { margin-bottom: 18px; }
-.side-actions .btn { width: 100%; }
+.side-actions .split { width: 100%; }
+.side-actions .split > .btn[data-run] { flex: 1; }
+.split { position: relative; display: inline-flex; }
+.split > .btn[data-run] { border-radius: 8px 0 0 8px; }
+.split > .more-btn { border-radius: 0 8px 8px 0; border-left: 1px solid rgba(255, 255, 255, .35); padding: 7px 10px; letter-spacing: 1px; }
+.split.ghost > .more-btn { border-left: 0; }
+.menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 240px; background: var(--surface); border: 1px solid var(--line);
+        border-radius: 10px; box-shadow: 0 10px 30px rgba(15, 30, 22, .14); padding: 6px; }
+.menu .mh { font-size: 12.5px; color: var(--muted); padding: 6px 10px 4px; }
+.menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.menu button:hover, .menu button:focus-visible { background: var(--teal-soft); color: var(--teal); }
+.menu button .def { color: var(--faint); font-size: 12.5px; margin-left: 6px; }
+.tlabel { font: 12px var(--ui); color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-left: 8px; cursor: pointer; vertical-align: 1px; }
+.tlabel:hover { color: var(--teal); border-color: var(--teal); }
+.nav-item.all { font-weight: 600; }
 .side-actions .note { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .working { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
 .spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--teal); border-radius: 50%; animation: spin 1s linear infinite; flex: none; }
@@ -333,7 +349,9 @@ function transcript(msgs, idx, opt = {}) {
   for (const m of msgs) {
     const day = dayKey(m.date);
     if (day !== lastDay) { html += `<div class="day-div">${esc(dayLabel(day))}</div>`; lastDay = day; prev = null; }
-    const cont = prev && prev.sender === m.sender && !m.reply_to && (new Date(m.date) - new Date(prev.date)) < 10 * 60000;
+    const cont = prev && prev.sender === m.sender && !m.reply_to && prev.topic_id === m.topic_id && prev.group_id === m.group_id &&
+      (new Date(m.date) - new Date(prev.date)) < 10 * 60000;
+    const label = opt.labels ? `<button class="tlabel" data-gid="${esc(m.group_id)}" data-topic="${esc(String(m.topic_id))}" title="${esc(m.group)}${m.topic ? " › " + esc(m.topic) : ""}: open this subgroup">${esc(m.topic || m.group)}</button>` : "";
     const key = m.group_id + ":" + m.id;
     let quote = "";
     if (m.reply_to) {
@@ -346,7 +364,7 @@ function transcript(msgs, idx, opt = {}) {
     const media = m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : "";
     html += `<div class="m${cont ? "" : " first"}${opt.refs && opt.refs.has(key) ? " ref" : ""}" id="${cssId(key)}">
       <div class="t">${hhmm(m.date)}</div>
-      <div>${cont ? "" : `<div class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}${m.forwarded ? '<span class="fwd">forwarded</span>' : ""}</div>`}${quote}<div class="body">${media}${richText(m.text)}</div>${n && opt.threads ? `<button class="rep" data-thread="${esc(key)}">${plural(n, "reply", "replies")}</button>` : ""}</div>
+      <div>${cont ? "" : `<div class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}${m.forwarded ? '<span class="fwd">forwarded</span>' : ""}${label}</div>`}${quote}<div class="body">${media}${richText(m.text)}</div>${n && opt.threads ? `<button class="rep" data-thread="${esc(key)}">${plural(n, "reply", "replies")}</button>` : ""}</div>
       <div class="acts"><a href="${esc(m.app_link)}" title="Open this message in the Telegram app">Open in Telegram</a></div>
     </div>`;
     prev = m;
@@ -363,9 +381,12 @@ function flashTo(key) {
 }
 
 // ---------- state ----------
-const S = { tab: null, status: {}, msgRange: "24h", msgIdx: null, sel: null, thread: null, q: "",
+const S = { tab: null, status: {}, msgRange: "24h", msgIdx: null, sel: { gid: "*", topic: "*" }, thread: null, q: "",
             digests: [], digestName: null, digest: null, dIdx: null, short: new Map(), open: new Set(), dates: [] };
 let FB = {};
+const ICON_MORE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 14V2.5"/><path d="M3.5 3h8l-1.6 2.7L11.5 8.5h-8"/></svg>`;
+const ICON_LESS = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M5.2 8h5.6"/></svg>`;
+const ICON_DONE = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>`;
 let DIGEST_TX = {};
 
 // ---------- health ----------
@@ -400,17 +421,25 @@ async function refreshStatus() {
 }
 
 const engineReady = () => !!(S.status.digest && S.status.digest.engine);
-async function startDigest() {
-  try { const r = await api("/api/digest/run", {}); if (!r.busy) { S.status.digest = { ...(S.status.digest || {}), running: true }; } }
+const PERIOD_CHOICES = [["since_last", "Since the last digest"], ["last_24h", "Last 24 hours"], ["today", "Today so far"],
+                        ["yesterday", "Yesterday"], ["last_3d", "Last 3 days"], ["last_7d", "Last 7 days"]];
+function runButton(ghost) {
+  const def = (SETTINGS && SETTINGS.digest_period) || "since_last";
+  return `<div class="split${ghost ? " ghost" : ""}"><button class="btn${ghost ? " ghost" : ""}" data-run>Write a digest now</button><button class="btn${ghost ? " ghost" : ""} more-btn" data-runmenu aria-haspopup="true" aria-label="Choose what the digest covers" title="Choose what the digest covers">···</button>
+    <div class="menu" hidden><div class="mh">Write a digest covering</div>${PERIOD_CHOICES.map(([v, l]) => `<button data-runp="${v}">${l}${v === def ? '<span class="def">usual</span>' : ""}</button>`).join("")}</div></div>`;
+}
+async function startDigest(period) {
+  try { const r = await api("/api/digest/run", period ? { period } : {}); if (!r.busy) { S.status.digest = { ...(S.status.digest || {}), running: true }; } }
   catch (e) { alert(e.message); return; }
   await refreshStatus();
   if (S.tab === "digest") renderDigest();
+  if (S.tab === "setup") renderSetup();
 }
 function digestAction() {
   const d = S.status.digest || {};
   if (d.running) return `<div class="working"><span class="spin"></span><span>${esc(d.engine_name || "Your AI")} is writing a digest. This can take a few minutes.</span></div>`;
   if (!d.engine) return `<p class="note">To get a digest, ask your AI assistant for one. To have them written automatically, see Settings.</p>`;
-  return `<button class="btn" data-run>Write a digest now</button>` +
+  return runButton(false) +
     (d.last_message ? `<p class="note">${d.last_ok === false ? '<span class="errc">' + esc(d.last_message) + "</span>" : esc(d.last_message)}</p>` : "");
 }
 $("#health").onclick = () => show("setup");
@@ -428,6 +457,7 @@ $$(".tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
 // ---------- Digest ----------
 async function renderDigest() {
   const view = $("#view");
+  if (!SETTINGS) SETTINGS = await api("/api/settings").catch(() => null);
   S.digests = await api("/api/digests").catch(() => []);
   if (!S.digests.length) {
     const d = S.status.digest || {};
@@ -520,8 +550,8 @@ function points(bullets, gid, fb) {
   return `<ul class="pts">${bullets.map(b => {
     const id = "f" + Object.keys(FB).length;
     FB[id] = { kind: fb.kind, text: b.text, topic: fb.topic };
-    const label = fb.kind === "less" ? "Not for me" : "Flag things like this";
-    return `<li>${bold(b.text)}${pips(b.refs, gid)}<button class="fb" data-fb="${id}" title="Your AI uses this to learn what needs your attention">${label}</button></li>`;
+    const label = fb.kind === "less" ? "Not for me: don't flag things like this" : "Flag things like this for me";
+    return `<li>${bold(b.text)}${pips(b.refs, gid)}<button class="fb" data-fb="${id}" title="${label}" aria-label="${label}">${fb.kind === "less" ? ICON_LESS : ICON_MORE}</button></li>`;
   }).join("")}</ul>`;
 }
 
@@ -622,12 +652,9 @@ async function loadMessages() {
   const msgs = await api(`/api/messages?from=${encodeURIComponent(localISO(r.from))}&to=${encodeURIComponent(localISO(r.to))}`);
   S.msgIdx = index(msgs);
   const idx = S.msgIdx;
-  const ok = S.sel && idx.groups.has(S.sel.gid) && idx.groups.get(S.sel.gid).topics.has(S.sel.topic);
-  if (!ok) {
-    const g = sortedGroups(idx)[0];
-    S.sel = g ? { gid: g.id, topic: sortedTopics(g)[0].key } : null;
-    S.thread = null;
-  }
+  const ok = S.sel && (S.sel.gid === "*" || (idx.groups.has(S.sel.gid) &&
+    (S.sel.topic === "*" || idx.groups.get(S.sel.gid).topics.has(S.sel.topic))));
+  if (!ok) { S.sel = { gid: "*", topic: "*" }; S.thread = null; }
   drawMessages();
 }
 
@@ -636,9 +663,16 @@ function drawMessages() {
   const rangeOpts = (S.digests.length ? `<option value="since"${S.msgRange === "since" ? " selected" : ""}>Since the last digest</option>` : "") +
     `<option value="24h"${S.msgRange === "24h" ? " selected" : ""}>Last 24 hours</option>` +
     S.dates.map(d => `<option value="${d}"${S.msgRange === d ? " selected" : ""}>${esc(dayLabel(d))}</option>`).join("");
-  let nav = "", navSel = "";
-  for (const g of sortedGroups(idx)) {
+  const groups = sortedGroups(idx), multi = groups.length > 1;
+  const isSel = (gid, topic) => S.sel && S.sel.gid === gid && S.sel.topic === topic && !S.q;
+  let nav = idx.msgs.length ? `<button class="nav-item all${isSel("*", "*") ? " on" : ""}" data-gid="*" data-topic="*"><span>All messages</span><span class="n">${idx.msgs.length}</span></button>` : "";
+  let navSel = idx.msgs.length ? `<option value="*|*"${isSel("*", "*") ? " selected" : ""}>All messages (${idx.msgs.length})</option>` : "";
+  for (const g of groups) {
     nav += `<div class="nav-group">${esc(g.title)}</div>`;
+    if (multi) {
+      nav += `<button class="nav-item${isSel(g.id, "*") ? " on" : ""}" data-gid="${esc(g.id)}" data-topic="*"><span>All of this group</span><span class="n">${g.count}</span></button>`;
+      navSel += `<option value="${esc(g.id)}|*"${isSel(g.id, "*") ? " selected" : ""}>All of ${esc(g.title)} (${g.count})</option>`;
+    }
     navSel += `<optgroup label="${esc(g.title)}">`;
     for (const t of sortedTopics(g)) {
       const on = S.sel && S.sel.gid === g.id && S.sel.topic === t.key && !S.q;
@@ -654,10 +688,17 @@ function drawMessages() {
     main = searchResults(idx);
   } else if (S.thread) {
     const msgs = threadOf(S.thread, idx), root = msgs[0];
-    const back = S.sel && idx.groups.get(S.sel.gid) ? idx.groups.get(S.sel.gid).topics.get(S.sel.topic) : null;
-    main = `<button class="back" data-back>Back${back ? " to " + esc(back.title) : ""}</button>
-      <header class="ph"><h1>Thread</h1><p class="sub">Started by ${esc(root.sender)} at ${hhmm(root.date)}, ${plural(msgs.length, "message", "messages")}.</p></header>
+    const g = S.sel.gid !== "*" ? idx.groups.get(S.sel.gid) : null;
+    const backTo = S.sel.gid === "*" ? "all messages" : S.sel.topic === "*" ? (g ? g.title : "") : (g && g.topics.get(S.sel.topic) ? g.topics.get(S.sel.topic).title : "");
+    main = `<button class="back" data-back>Back${backTo ? " to " + esc(backTo) : ""}</button>
+      <header class="ph"><h1>Thread</h1><p class="sub">Started by ${esc(root.sender)} at ${hhmm(root.date)}${root.topic ? " in " + esc(root.topic) : ""}, ${plural(msgs.length, "message", "messages")}.</p></header>
       ${transcript(msgs, idx, { threads: false, refs: new Set([S.thread]) })}`;
+  } else if (S.sel.topic === "*") {
+    const g = S.sel.gid === "*" ? null : idx.groups.get(S.sel.gid);
+    const msgs = g ? [].concat(...[...g.topics.values()].map(t => t.msgs)).sort((a, b) => (a.date < b.date ? -1 : 1)) : idx.msgs;
+    const nTop = g ? g.topics.size : [...idx.groups.values()].reduce((n, x) => n + x.topics.size, 0);
+    main = `<header class="ph"><h1>${g ? esc(g.title) : "All messages"}</h1><p class="sub">${plural(msgs.length, "message", "messages")} from ${plural(nTop, "subgroup", "subgroups")} ${esc(r.label)}, oldest first.</p></header>
+      ${transcript(msgs, idx, { threads: true, labels: true })}`;
   } else {
     const g = idx.groups.get(S.sel.gid), t = g.topics.get(S.sel.topic);
     main = `<header class="ph"><h1>${esc(t.title)}</h1><p class="sub">${esc(g.title)}, ${plural(t.msgs.length, "message", "messages")} ${esc(r.label)}.</p></header>
@@ -694,6 +735,11 @@ function searchResults(idx) {
 
 // ---------- shared clicks ----------
 document.addEventListener("click", e => {
+  const mb = e.target.closest("[data-runmenu]");
+  $$(".menu").forEach(m => { if (!mb || m !== mb.nextElementSibling) m.hidden = true; });
+  if (mb) { const m = mb.nextElementSibling; m.hidden = !m.hidden; if (!m.hidden) { const f = m.querySelector("button"); if (f) f.focus(); } return; }
+  const rp = e.target.closest("[data-runp]");
+  if (rp) { startDigest(rp.dataset.runp === "since_last" ? null : rp.dataset.runp); return; }
   const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto],[data-digest],[data-fb],[data-since],[data-run]");
   if (!t) return;
   const d = t.dataset;
@@ -729,8 +775,8 @@ document.addEventListener("click", e => {
   } else if (d.fb) {
     const f = FB[d.fb];
     if (!f || t.classList.contains("done")) return;
-    api("/api/feedback", f).then(() => { t.textContent = "Noted"; t.classList.add("done"); })
-      .catch(err => { t.textContent = "Couldn't save"; t.title = err.message; });
+    api("/api/feedback", f).then(() => { t.innerHTML = ICON_DONE; t.classList.add("done"); t.title = "Noted. The digest will take this into account."; t.setAttribute("aria-label", t.title); })
+      .catch(err => { t.title = "Couldn't save: " + err.message; });
   } else if (t.hasAttribute("data-run")) {
     t.disabled = true; startDigest();
   } else if (t.hasAttribute("data-since")) {
@@ -758,6 +804,7 @@ document.addEventListener("mouseover", e => { const a = e.target.closest(".pip a
 document.addEventListener("mouseout", e => { if (e.target.closest(".pip a[data-key]")) hidePop(); });
 document.addEventListener("focusin", e => { const a = e.target.closest(".pip a[data-key]"); a ? showPop(a) : hidePop(); });
 addEventListener("scroll", hidePop, { passive: true });
+document.addEventListener("keydown", e => { if (e.key === "Escape") $$(".menu").forEach(m => m.hidden = true); });
 
 // ---------- Setup (first run) and Settings ----------
 let GROUPS = null, SEL = null, TOPICS = {}, NEED_PW = false, SETTINGS = null, PICKER_OPEN = false, ORDER = [];
@@ -962,7 +1009,7 @@ function renderSettings(s) {
       ${s.last_error ? `<p class="errc">${esc(s.last_error)}</p>` : ""}
       ${d.last_ok === false && d.last_message ? `<p class="errc">${esc(d.last_message)}</p>` : ""}
       <div class="row"><button class="btn ghost" id="exnow" ${s.exporting ? "disabled" : ""}>${s.exporting ? "Checking…" : "Check for new messages now"}</button>
-        ${d.engine ? (d.running ? digestAction() : `<button class="btn ghost" data-run>Write a digest now</button>`) : ""}
+        ${d.engine ? (d.running ? digestAction() : runButton(true)) : ""}
         <span id="exmsg" class="muted"></span></div>
     </section>
 
@@ -984,7 +1031,7 @@ function renderSettings(s) {
     </section>
 
     <section class="panel" id="prefs"><h2>What needs your attention</h2>
-      <p class="muted">In your own words. The digest uses this to decide what goes under “Needs attention”, and learns more each time you click “Not for me” or “Flag things like this” in a digest.</p>
+      <p class="muted">In your own words. The digest uses this to decide what goes under “Needs attention”. It also learns from the small buttons at the end of each digest point: the circle means “not for me”, the flag means “flag things like this”.</p>
       <div id="prefsform"><p class="muted">Loading…</p></div>
       <div class="row"><button class="btn" id="saveprefs">Save</button><span id="prefsmsg" class="muted"></span></div>
     </section>
