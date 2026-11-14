@@ -6,105 +6,217 @@
 <title>Telegram digest</title>
 <link rel="icon" href="data:,">
 <style>
+:root {
+  --bg: #F3F5F1; --surface: #FFFFFF; --ink: #1E2420; --muted: #66706A; --faint: #98A29C; --line: #DDE2DC;
+  --teal: #1F6F5C; --teal-soft: #E2EEE9; --sun: #D9940B; --sun-soft: #FBF0D6; --ok: #2E9E6B; --err: #B3261E;
+  --name-s: 55%; --name-l: 36%; --dot-l: 48%;
+  --ui: "Avenir Next", "Seravek", "Segoe UI", system-ui, sans-serif;
+  --read: "Charter", "Iowan Old Style", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f7f7f5; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e4e4e0;
-    --accent: #2a7de1; --accent-ink: #fff; --hl: #fff6d6; --ok: #1f8a4c; --err: #c0392b;
-    --chip: #eef4fd; --chip-ink: #1d5fb0;
+    --bg: #141916; --surface: #1B211E; --ink: #E4EAE6; --muted: #9AA5A0; --faint: #6E7974; --line: #2B332F;
+    --teal: #6CC5AC; --teal-soft: #1E322B; --sun: #F0B43A; --sun-soft: #2D2614; --ok: #5CC28F; --err: #F28B82;
+    --name-l: 72%; --dot-l: 62%;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #161618; --card: #1f1f22; --ink: #ececec; --muted: #9a9aa0; --line: #2f2f33;
-      --accent: #4c95ef; --hl: #3a3420; --chip: #233247; --chip-ink: #9cc4f5;
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
-  .bar { max-width: 880px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  h1 { font-size: 17px; margin: 0; }
-  nav { display: flex; gap: 4px; }
-  nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px; border-radius: 8px; font: inherit; cursor: pointer; }
-  nav button.on { background: var(--card); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
-  #status { margin-left: auto; color: var(--muted); font-size: 13px; }
-  main { max-width: 880px; margin: 0 auto; padding: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
-  .card h2 { font-size: 15px; margin: 0 0 10px; }
-  .muted { color: var(--muted); }
-  .ok { color: var(--ok); } .err { color: var(--err); }
-  input[type=text], input[type=password], input[type=search], select {
-    font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); }
-  button.primary, button.secondary { font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--accent); }
-  button.primary { background: var(--accent); color: var(--accent-ink); }
-  button.secondary { background: none; color: var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  button.link { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-  .grp { border-top: 1px solid var(--line); padding: 8px 0; }
-  .grp:first-child { border-top: 0; }
-  .grp > .row { margin: 0; }
-  .grp label { display: flex; gap: 8px; align-items: center; cursor: pointer; flex: 1; }
-  .badge { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; }
-  .topics { margin: 6px 0 2px 28px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 12px; }
-  .topics label { font-size: 14px; }
-  #grouplist { max-height: 60vh; overflow: auto; margin: 8px 0; }
-  .savebar { display: flex; gap: 10px; align-items: center; }
-  h3.group { font-size: 18px; margin: 22px 0 8px; }
-  .topic { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
-  .topic h4 { margin: 0 0 6px; font-size: 15px; }
-  .topic h4 small { font-weight: normal; color: var(--muted); margin-left: 6px; }
-  ul.bullets { margin: 4px 0 6px; padding-left: 20px; }
-  ul.bullets li { margin: 4px 0; }
-  .highlights { border-left: 3px solid var(--accent); }
-  a.src { display: inline-block; font-size: 12px; background: var(--chip); color: var(--chip-ink); text-decoration: none;
-          border-radius: 6px; padding: 0 6px; margin: 0 2px; white-space: nowrap; }
-  a.src:hover { text-decoration: underline; }
-  details > summary { cursor: pointer; color: var(--accent); font-size: 14px; margin-top: 4px; }
-  .msg { padding: 8px 0; border-top: 1px solid var(--line); }
-  .msg:first-child { border-top: 0; }
-  .msg.hl { background: var(--hl); margin: 0 -8px; padding: 8px; border-radius: 6px; }
-  .meta { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-  .meta b { color: var(--ink); font-size: 14px; }
-  .meta .open { margin-left: auto; }
-  .meta a { color: var(--accent); text-decoration: none; font-size: 13px; }
-  .reply { display: block; font-size: 13px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; margin: 2px 0; }
-  .text { white-space: pre-wrap; word-wrap: break-word; }
-  .text a { color: var(--accent); }
-  .media { color: var(--muted); font-style: italic; }
-  .tag { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 76px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--ui); -webkit-font-smoothing: antialiased; }
+a { color: var(--teal); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 4px; }
+[hidden] { display: none !important; }
+
+/* header */
+.top { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1120px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+.brand { font-family: var(--read); font-weight: 600; font-size: 18px; letter-spacing: -.01em; white-space: nowrap; }
+.tabs { display: flex; gap: 22px; height: 100%; }
+.tabs button { background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; height: 100%; }
+.tabs button.on { color: var(--ink); border-bottom-color: var(--teal); }
+.health { margin-left: auto; display: flex; align-items: center; gap: 8px; background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 13px; text-align: right; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+.dot.ok { background: var(--ok); } .dot.warn { background: var(--sun); } .dot.bad { background: var(--err); }
+
+/* layout */
+.layout { max-width: 1120px; margin: 0 auto; padding: 28px 24px 80px; display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 48px; }
+.side { position: sticky; top: 84px; align-self: start; max-height: calc(100vh - 100px); overflow: auto; padding-bottom: 12px; }
+.main { min-width: 0; max-width: 700px; }
+.layout.single { grid-template-columns: minmax(0, 1fr); }
+.layout.single .main { max-width: 720px; }
+
+.field { display: block; margin-bottom: 12px; }
+.field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+select, input[type=text], input[type=password], input[type=search] {
+  font: inherit; font-size: 14px; width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.nav-group { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 6px; }
+.nav-item { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; background: none; border: 0; padding: 6px 10px; border-radius: 8px; cursor: pointer; color: var(--ink); }
+.nav-item:hover { background: var(--surface); }
+.nav-item.on { background: var(--teal-soft); color: var(--teal); font-weight: 600; }
+.nav-item .n { color: var(--faint); font-variant-numeric: tabular-nums; font-weight: 400; }
+.nav-item.on .n { color: var(--teal); }
+.nav-item.att { color: var(--sun); font-weight: 600; }
+.nav-select { display: none; }
+
+/* page header */
+.ph { margin-bottom: 22px; }
+.ph h1 { font-family: var(--read); font-size: 30px; line-height: 1.2; font-weight: 600; letter-spacing: -.015em; margin: 0; }
+.ph .sub { color: var(--muted); margin: 6px 0 0; }
+.back { background: none; border: 0; padding: 0; color: var(--teal); cursor: pointer; margin-bottom: 10px; }
+
+/* digest */
+.attention { background: var(--sun-soft); border-left: 3px solid var(--sun); border-radius: 0 12px 12px 0; padding: 16px 22px 10px; margin: 0 0 30px; }
+.attention h2 { font-size: 15px; margin: 0; }
+.topic { border-top: 1px solid var(--line); padding: 22px 0 10px; }
+.topic h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; font-size: 18px; font-weight: 600; margin: 0; }
+.topic h2 .count { font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+.group-title { font-family: var(--read); font-size: 22px; margin: 34px 0 6px; }
+ul.pts { font-family: var(--read); font-size: 17.5px; line-height: 1.6; margin: 10px 0 8px; padding-left: 1.15em; }
+ul.pts li { margin: 7px 0; padding-left: 2px; }
+ul.pts li::marker { color: var(--faint); }
+.pip { font: 12px/1.6 var(--ui); display: inline-flex; align-items: center; gap: 5px; padding: 0 8px 0 6px; margin-left: 5px; border-radius: 999px;
+       border: 1px solid var(--line); background: var(--surface); color: var(--muted); text-decoration: none; vertical-align: 2px; white-space: nowrap; }
+.pip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h) var(--name-s) var(--dot-l)); }
+.pip:hover, .pip:focus-visible { border-color: var(--teal); color: var(--teal); }
+.toggle { background: none; border: 0; padding: 4px 0; color: var(--teal); cursor: pointer; font-size: 14px; }
+.also { border-top: 1px solid var(--line); padding: 22px 0; }
+.also h2 { font-size: 15px; margin: 0 0 8px; }
+.also-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
+.empty { color: var(--muted); padding: 60px 0; max-width: 460px; }
+.empty h1 { font-family: var(--read); color: var(--ink); font-size: 24px; margin: 0 0 8px; }
+
+/* transcript */
+.tx { margin: 6px 0 14px; }
+.day-div { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 20px 0 6px; }
+.day-div::before, .day-div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.m { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 14px; padding: 2px 10px 2px 4px; border-radius: 8px; }
+.m.first { margin-top: 12px; padding-top: 4px; }
+.m:hover { background: var(--surface); }
+.m .t { font-size: 12px; color: var(--faint); text-align: right; padding-top: 2px; font-variant-numeric: tabular-nums; }
+.m:not(.first) .t { visibility: hidden; }
+.m:not(.first):hover .t { visibility: visible; }
+.who { font-weight: 600; font-size: 14.5px; color: hsl(var(--h) var(--name-s) var(--name-l)); }
+.fwd { font-weight: 400; font-size: 12px; color: var(--faint); margin-left: 6px; }
+.body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.q { display: block; border-left: 2px solid hsl(var(--h) var(--name-s) var(--dot-l)); padding: 1px 10px; margin: 3px 0 4px; font-size: 13.5px;
+     color: var(--muted); text-decoration: none; border-radius: 0 6px 6px 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q b { font-weight: 600; color: hsl(var(--h) var(--name-s) var(--name-l)); margin-right: 4px; }
+a.q:hover { background: var(--teal-soft); }
+.q.missing { cursor: default; border-left-color: var(--line); }
+.media { display: inline-block; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-right: 6px; white-space: nowrap; }
+.mention { color: var(--teal); }
+.rep { background: none; border: 0; padding: 2px 0 0; color: var(--faint); cursor: pointer; font-size: 12.5px; }
+.rep:hover, .rep:focus-visible { color: var(--teal); }
+.acts { font-size: 12.5px; opacity: 0; white-space: nowrap; padding-top: 2px; }
+.acts a { text-decoration: none; }
+.m:hover .acts, .m:focus-within .acts { opacity: 1; }
+@media (hover: none) { .acts { opacity: 1; } }
+.m.ref { box-shadow: inset 3px 0 0 var(--sun); border-radius: 0 8px 8px 0; }
+.m.flash { animation: flash 1.8s ease-out; }
+@keyframes flash { 0%, 30% { background: var(--sun-soft); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .m.flash { animation: none; background: var(--sun-soft); } }
+mark { background: var(--sun-soft); color: inherit; border-radius: 3px; padding: 0 1px; }
+.hit { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 10px 4px; cursor: pointer; }
+.hit:hover { background: var(--surface); }
+.hit .meta { font-size: 13px; color: var(--muted); }
+
+/* source preview */
+#pop { position: fixed; z-index: 30; width: 330px; max-width: calc(100vw - 24px); background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+       padding: 12px 14px; box-shadow: 0 10px 30px rgba(15, 30, 22, .16); pointer-events: none; font-size: 14px; }
+#pop .meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+#pop .meta span { color: var(--faint); font-size: 12px; }
+#pop .body { max-height: 220px; overflow: hidden; }
+#pop .hint { font-size: 12px; color: var(--faint); margin-top: 8px; }
+
+/* setup */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; }
+.panel h2 { font-size: 16px; margin: 0 0 10px; }
+.panel p { margin: 6px 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.row input[type=text], .row input[type=password] { width: auto; flex: 1; min-width: 140px; }
+input[type=checkbox] { width: auto; flex: none; margin: 0; accent-color: var(--teal); }
+.btn { border: 1px solid var(--teal); background: var(--teal); color: var(--surface); border-radius: 8px; padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+.btn.ghost { background: none; color: var(--teal); }
+.btn:disabled { opacity: .45; cursor: default; }
+.link { background: none; border: 0; padding: 0; color: var(--teal); cursor: pointer; }
+.muted { color: var(--muted); } .okc { color: var(--ok); } .errc { color: var(--err); }
+.facts { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 6px 14px; margin: 8px 0 12px; }
+.facts dt { color: var(--muted); } .facts dd { margin: 0; display: flex; gap: 8px; align-items: baseline; }
+.facts dd .dot { position: relative; top: -1px; }
+.grp { border-top: 1px solid var(--line); padding: 8px 0; }
+.grp:first-child { border-top: 0; }
+.grp label { display: flex; gap: 10px; align-items: center; cursor: pointer; flex: 1; }
+.badge { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; white-space: nowrap; }
+.topics { margin: 6px 0 2px 28px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px 14px; }
+.topics label { font-size: 14px; }
+#grouplist { max-height: 55vh; overflow: auto; margin: 8px 0; }
+
+/* narrow, including the Claude app's browser pane */
+@media (max-width: 860px) {
+  .top-in { padding: 0 16px; gap: 18px; }
+  .brand { display: none; }
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 18px 16px 60px; }
+  .side { position: static; max-height: none; overflow: visible; }
+  .nav-list { display: none; }
+  .nav-select { display: block; }
+  .side .field { margin-bottom: 8px; }
+  .ph h1 { font-size: 25px; }
+  ul.pts { font-size: 17px; }
+  .health .htext { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+  .facts dt { margin-top: 6px; }
+}
 </style>
 </head>
 <body>
-<header><div class="bar">
-  <h1>Telegram digest</h1>
-  <nav>
+<header class="top"><div class="top-in">
+  <div class="brand">Telegram digest</div>
+  <nav class="tabs">
     <button data-tab="digest">Digest</button>
     <button data-tab="messages">Messages</button>
     <button data-tab="setup">Setup</button>
   </nav>
-  <span id="status"></span>
+  <button class="health" id="health" title="Fetching status"><span class="dot" id="hdot"></span><span class="htext" id="htext">Checking…</span></button>
 </div></header>
-<main>
-  <section id="tab-digest" hidden></section>
-  <section id="tab-messages" hidden></section>
-  <section id="tab-setup" hidden></section>
-</main>
+
+<div id="view"></div>
+<div id="pop" hidden></div>
 
 <script>
+// ---------- helpers ----------
 const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
-const rich = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 const trunc = (s, n) => (s = String(s || "")).length > n ? s.slice(0, n - 1) + "…" : s;
+const oneLine = s => String(s || "").replace(/\s+/g, " ").trim();
+const HUES = [4, 24, 38, 95, 140, 168, 192, 212, 236, 262, 288, 318, 340];
+const hue = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.codePointAt(0)) >>> 0; return HUES[h % HUES.length]; };
 const hhmm = iso => iso ? iso.slice(11, 16) : "";
-const localISO = d => { const p = n => String(n).padStart(2, "0");
-  const o = -d.getTimezoneOffset(), sign = o >= 0 ? "+" : "-";
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${p(Math.floor(Math.abs(o) / 60))}:${p(Math.abs(o) % 60)}`; };
-const fmtWhen = iso => { if (!iso) return "never"; const d = new Date(iso);
-  return d.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); };
-
+const dayKey = iso => iso.slice(0, 10);
+const dayLabel = key => new Date(key + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+const shortWhen = iso => new Date(iso).toLocaleString(undefined, { weekday: "long", hour: "2-digit", minute: "2-digit" });
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const cssId = k => "m" + String(k).replace(/[^0-9a-z]/gi, "_");
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function ago(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h ago`;
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+function localISO(d) {
+  const p = n => String(n).padStart(2, "0"), o = -d.getTimezoneOffset(), sg = o >= 0 ? "+" : "-";
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sg}${p(Math.floor(Math.abs(o) / 60))}:${p(Math.abs(o) % 60)}`;
+}
+function richText(s) {
+  return esc(s)
+    .replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`)
+    .replace(/(^|\s)(@\w{3,})/g, '$1<span class="mention">$2</span>');
+}
+const bold = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const r = await fetch(path, opt);
@@ -113,212 +225,409 @@ async function api(path, body) {
   return j;
 }
 
-let STATUS = {};
-let TAB = location.hash.slice(1) || null;
-
-async function refreshStatus() {
-  try { STATUS = await api("/api/status"); } catch (e) { STATUS = { last_error: e.message }; }
-  const s = STATUS;
-  let txt = !s.keys ? "Not set up" : !s.authorized ? "Not logged in" :
-    `${esc(s.me || "Logged in")} · last export ${fmtWhen(s.last_export)}`;
-  if (s.exporting) txt += " · exporting…";
-  if (s.last_error) txt += ` · <span class="err">${esc(s.last_error)}</span>`;
-  $("#status").innerHTML = txt;
-  return s;
-}
-
-function show(tab) {
-  TAB = tab; history.replaceState(null, "", "#" + tab);
-  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
-  document.querySelectorAll("main > section").forEach(s => s.hidden = s.id !== "tab-" + tab);
-  ({ digest: renderDigestTab, messages: renderMessagesTab, setup: renderSetup })[tab]();
-}
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
-
-// ---------- shared rendering ----------
-function tree(msgs) {
-  const groups = new Map();
+// ---------- message data ----------
+function index(msgs) {
+  const byId = new Map(), kids = new Map(), groups = new Map();
+  for (const m of msgs) byId.set(m.group_id + ":" + m.id, m);
   for (const m of msgs) {
-    if (!groups.has(m.group_id)) groups.set(m.group_id, { id: m.group_id, title: m.group, topics: new Map() });
+    if (m.reply_to) {
+      const pk = m.group_id + ":" + m.reply_to;
+      if (byId.has(pk)) { if (!kids.has(pk)) kids.set(pk, []); kids.get(pk).push(m); }
+    }
+    if (!groups.has(m.group_id)) groups.set(m.group_id, { id: m.group_id, title: m.group, topics: new Map(), count: 0 });
     const g = groups.get(m.group_id), k = String(m.topic_id);
-    if (!g.topics.has(k)) g.topics.set(k, { id: m.topic_id, title: m.topic || "Chat", msgs: [] });
+    if (!g.topics.has(k)) g.topics.set(k, { key: k, id: m.topic_id, title: m.topic || "Chat", msgs: [] });
     g.topics.get(k).msgs.push(m);
+    g.count++;
   }
-  return groups;
+  return { msgs, byId, kids, groups };
 }
-const byIdMap = msgs => new Map(msgs.map(m => [m.group_id + ":" + m.id, m]));
+const sortedTopics = g => [...g.topics.values()].sort((a, b) => b.msgs.length - a.msgs.length);
+const sortedGroups = idx => [...idx.groups.values()].sort((a, b) => b.count - a.count);
 
-function timeLabel(m) {
-  const today = localISO(new Date()).slice(0, 10);
-  return (m.date.slice(0, 10) !== today ? m.date.slice(8, 10) + "." + m.date.slice(5, 7) + " " : "") + hhmm(m.date);
-}
-
-function msgHTML(m, byId, hl) {
-  let reply = "";
-  if (m.reply_to) {
-    const t = byId.get(m.group_id + ":" + m.reply_to);
-    reply = `<span class="reply">↪ ${t ? `${esc(t.sender)}: ${esc(trunc(t.text || t.media, 80))}` : "reply to an earlier message"}</span>`;
+function threadOf(key, idx) {
+  let root = key;
+  const seen = new Set([key]);
+  for (;;) {
+    const m = idx.byId.get(root);
+    if (!m || !m.reply_to) break;
+    const pk = m.group_id + ":" + m.reply_to;
+    if (!idx.byId.has(pk) || seen.has(pk)) break;
+    seen.add(pk); root = pk;
   }
-  return `<div class="msg${hl ? " hl" : ""}">
-    <div class="meta"><span>${timeLabel(m)}</span><b>${esc(m.sender)}</b>${m.forwarded ? '<span class="tag">forwarded</span>' : ""}
-      <a class="open" href="${esc(m.app_link)}" title="Open this message in the Telegram app">Open in Telegram ↗</a>
-      <a href="${esc(m.link)}" target="_blank" rel="noopener" title="Open on t.me (web)">web</a></div>
-    ${reply}<div class="text">${m.media ? `<span class="media">${esc(m.media)}</span> ` : ""}${linkify(m.text)}</div>
-  </div>`;
-}
-
-function chipHTML(ref, groupId, byId) {
-  const m = byId.get(groupId + ":" + ref);
-  if (!m) {
-    const ch = String(groupId).replace(/^-100/, "");
-    return `<a class="src" href="tg://privatepost?channel=${esc(ch)}&post=${esc(ref)}">#${esc(ref)} ↗</a>`;
+  const out = [], stack = [root], got = new Set();
+  while (stack.length) {
+    const k = stack.pop();
+    if (got.has(k)) continue;
+    got.add(k);
+    const m = idx.byId.get(k);
+    if (m) out.push(m);
+    for (const c of idx.kids.get(k) || []) stack.push(c.group_id + ":" + c.id);
   }
-  const who = m.sender.split(" ")[0];
-  return `<a class="src" href="${esc(m.app_link)}" title="${esc(m.sender + ": " + (m.text || m.media))}">${hhmm(m.date)} ${esc(who)} ↗</a>`;
+  return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-function bulletsHTML(bullets, groupId, byId) {
-  if (!bullets || !bullets.length) return "";
-  return `<ul class="bullets">${bullets.map(b =>
-    `<li>${rich(b.text)} ${(b.refs || []).map(r => chipHTML(r, groupId, byId)).join("")}</li>`).join("")}</ul>`;
+function transcript(msgs, idx, opt = {}) {
+  let html = "", prev = null, lastDay = null;
+  for (const m of msgs) {
+    const day = dayKey(m.date);
+    if (day !== lastDay) { html += `<div class="day-div">${esc(dayLabel(day))}</div>`; lastDay = day; prev = null; }
+    const cont = prev && prev.sender === m.sender && !m.reply_to && (new Date(m.date) - new Date(prev.date)) < 10 * 60000;
+    const key = m.group_id + ":" + m.id;
+    let quote = "";
+    if (m.reply_to) {
+      const p = idx.byId.get(m.group_id + ":" + m.reply_to);
+      quote = p
+        ? `<a class="q" href="#${cssId(m.group_id + ":" + p.id)}" data-jump="${esc(m.group_id + ":" + p.id)}" style="--h:${hue(p.sender)}"><b>${esc(p.sender)}</b>${esc(trunc(oneLine(p.text || p.media), 110))}</a>`
+        : `<span class="q missing">Reply to an earlier message</span>`;
+    }
+    const n = (idx.kids.get(key) || []).length;
+    const media = m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : "";
+    html += `<div class="m${cont ? "" : " first"}${opt.refs && opt.refs.has(key) ? " ref" : ""}" id="${cssId(key)}">
+      <div class="t">${hhmm(m.date)}</div>
+      <div>${cont ? "" : `<div class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}${m.forwarded ? '<span class="fwd">forwarded</span>' : ""}</div>`}${quote}<div class="body">${media}${richText(m.text)}</div>${n && opt.threads ? `<button class="rep" data-thread="${esc(key)}">${plural(n, "reply", "replies")}</button>` : ""}</div>
+      <div class="acts"><a href="${esc(m.app_link)}" title="Open this message in the Telegram app">Open in Telegram</a></div>
+    </div>`;
+    prev = m;
+  }
+  return `<div class="tx">${html}</div>`;
 }
 
-// ---------- Digest tab ----------
-async function renderDigestTab() {
-  const el = $("#tab-digest");
-  const list = await api("/api/digests").catch(() => []);
-  if (!list.length) {
-    el.innerHTML = `<div class="empty">No digest yet.<br><br>Ask your AI assistant for a Telegram digest.<br>It reads this app's folder and the digest appears here, with links to every message.<br><br>
-      <button class="secondary" onclick="show('messages')">Browse messages</button></div>`;
+function flashTo(key) {
+  const el = document.getElementById(cssId(key));
+  if (!el) return false;
+  el.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  return true;
+}
+
+// ---------- state ----------
+const S = { tab: null, status: {}, msgRange: "24h", msgIdx: null, sel: null, thread: null, q: "",
+            digests: [], digestName: null, digest: null, dIdx: null, open: new Set(), dates: [] };
+let DIGEST_TX = {};
+
+// ---------- health ----------
+function health(s) {
+  if (s.down) return ["bad", "The app isn't responding"];
+  if (!s.keys || !s.authorized) return ["warn", "Finish setup"];
+  if (!s.selected) return ["warn", "Choose groups to follow"];
+  if (s.exporting) return ["ok", "Fetching new messages…"];
+  if (s.last_error) return ["bad", "Last fetch failed"];
+  if (!s.last_export) return ["warn", "Waiting for the first fetch"];
+  const hours = (Date.now() - new Date(s.last_export)) / 36e5;
+  if (hours > (s.interval_hours || 2) + 1.5) return ["warn", `Last fetched ${ago(s.last_export)}`];
+  return ["ok", `Up to date, fetched ${ago(s.last_export)}`];
+}
+async function refreshStatus() {
+  try { S.status = await api("/api/status"); } catch (e) { S.status = { down: true }; }
+  const [cls, text] = health(S.status);
+  $("#hdot").className = "dot " + cls;
+  $("#htext").textContent = text;
+  return S.status;
+}
+$("#health").onclick = () => show("setup");
+
+// ---------- tabs ----------
+function show(tab) {
+  S.tab = tab;
+  history.replaceState(null, "", "#" + tab);
+  $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  hidePop();
+  ({ digest: renderDigest, messages: renderMessages, setup: renderSetup })[tab]();
+}
+$$(".tabs button").forEach(b => b.onclick = () => show(b.dataset.tab));
+
+// ---------- Digest ----------
+async function renderDigest() {
+  const view = $("#view");
+  S.digests = await api("/api/digests").catch(() => []);
+  if (!S.digests.length) {
+    view.innerHTML = `<div class="layout single"><main class="main"><div class="empty">
+      <h1>No digest yet</h1>
+      <p>Ask your AI assistant (Claude or ChatGPT, with access to the TelegramDigest folder) for your Telegram digest. It appears here, with every point linked to the messages it came from.</p>
+      <p><button class="btn ghost" data-goto="messages">Read the messages</button></p></div></main></div>`;
     return;
   }
-  el.innerHTML = `<div class="controls"><select id="dsel">${list.map(d =>
-      `<option value="${esc(d.name)}">${esc(d.title || d.name)} (${fmtWhen(d.from)} – ${fmtWhen(d.to)})</option>`).join("")}</select></div>
-    <div id="dbody"></div>`;
-  $("#dsel").onchange = () => renderDigest($("#dsel").value);
-  renderDigest(list[0].name);
+  if (!S.digests.find(d => d.name === S.digestName)) S.digestName = S.digests[0].name;
+  view.innerHTML = `<div class="layout single"><main class="main"><p class="muted">Loading…</p></main></div>`;
+  const d = await api("/api/digest?name=" + encodeURIComponent(S.digestName));
+  const msgs = await api(`/api/messages?from=${encodeURIComponent(d.from)}&to=${encodeURIComponent(d.to)}`);
+  S.digest = d; S.dIdx = index(msgs); S.open = new Set();
+  drawDigest();
 }
 
-async function renderDigest(name) {
-  const body = $("#dbody");
-  body.innerHTML = `<p class="muted">Loading…</p>`;
-  const d = await api("/api/digest?name=" + encodeURIComponent(name));
-  const msgs = await api(`/api/messages?from=${encodeURIComponent(d.from)}&to=${encodeURIComponent(d.to)}`);
-  const byId = byIdMap(msgs), t = tree(msgs);
-  let html = `<p class="muted">${fmtWhen(d.from)} – ${fmtWhen(d.to)} · ${msgs.length} messages</p>`;
-  const groupIds = [...new Set([...(d.groups || []).map(g => String(g.group_id)), ...t.keys()])];
-  for (const gid of groupIds) {
+function digestSections() {
+  const d = S.digest, idx = S.dIdx, out = [];
+  const gids = [...new Set([...(d.groups || []).map(g => String(g.group_id)), ...idx.groups.keys()])];
+  for (const gid of gids) {
     const dg = (d.groups || []).find(g => String(g.group_id) === gid) || { topics: [] };
-    const tg = t.get(gid) || { title: dg.title, topics: new Map() };
-    html += `<h3 class="group">${esc(tg.title || dg.title)}</h3>`;
-    if (dg.highlights && dg.highlights.length)
-      html += `<div class="topic highlights"><h4>Needs attention</h4>${bulletsHTML(dg.highlights, gid, byId)}</div>`;
-    const used = new Set();
-    const findTopic = dt => {
-      for (const [k, tp] of tg.topics) {
-        if ((dt.topic_id != null && String(dt.topic_id) === k) ||
-            (dt.topic && tp.title.toLowerCase() === dt.topic.toLowerCase())) return [k, tp];
-      }
-      return [null, null];
-    };
-    const sections = [];
+    const ig = idx.groups.get(gid) || { title: dg.title, topics: new Map() };
+    const used = new Set(), topics = [];
     for (const dt of dg.topics || []) {
-      const [k, tp] = findTopic(dt);
-      if (k) used.add(k);
-      sections.push({ title: tp ? tp.title : dt.topic, msgs: tp ? tp.msgs : [], bullets: dt.bullets });
+      let hit = null;
+      for (const tp of ig.topics.values()) {
+        if ((dt.topic_id != null && String(dt.topic_id) === tp.key) || (dt.topic && tp.title.toLowerCase() === String(dt.topic).toLowerCase())) { hit = tp; break; }
+      }
+      if (hit) used.add(hit.key);
+      topics.push({ title: hit ? hit.title : dt.topic, msgs: hit ? hit.msgs : [], bullets: dt.bullets || [] });
     }
-    for (const [k, tp] of tg.topics) if (!used.has(k)) sections.push({ title: tp.title, msgs: tp.msgs, bullets: null });
-    for (const s of sections) {
-      const refs = new Set((s.bullets || []).flatMap(b => b.refs || []));
-      html += `<div class="topic"><h4>${esc(s.title)}<small>${s.msgs.length} message${s.msgs.length === 1 ? "" : "s"}</small></h4>
-        ${s.bullets ? bulletsHTML(s.bullets, gid, byId) : `<p class="muted">Not summarised.</p>`}
-        ${s.msgs.length ? `<details><summary>Show original messages</summary>${s.msgs.map(m => msgHTML(m, byId, refs.has(m.id))).join("")}</details>` : ""}
-      </div>`;
+    const rest = sortedTopics(ig).filter(tp => !used.has(tp.key)).map(tp => ({ title: tp.title, msgs: tp.msgs }));
+    out.push({ gid, title: ig.title || dg.title || "", highlights: dg.highlights || [], topics, rest });
+  }
+  return out;
+}
+
+function pip(ref, gid) {
+  const key = gid + ":" + ref, m = S.dIdx.byId.get(key);
+  if (!m) return `<a class="pip" style="--h:0" href="tg://privatepost?channel=${esc(String(gid).replace(/^-100/, ""))}&post=${esc(ref)}">#${esc(ref)}</a>`;
+  return `<a class="pip" style="--h:${hue(m.sender)}" href="${esc(m.app_link)}" data-key="${esc(key)}" aria-label="${esc(m.sender)} at ${hhmm(m.date)}, open in Telegram">${hhmm(m.date)}</a>`;
+}
+const points = (bullets, gid) => `<ul class="pts">${bullets.map(b => `<li>${bold(b.text)}${(b.refs || []).map(r => pip(r, gid)).join("")}</li>`).join("")}</ul>`;
+
+function convBlock(id, msgs, refs, labels) {
+  DIGEST_TX[id] = { msgs, refs, labels };
+  const open = S.open.has(id);
+  return `<button class="toggle" data-expand="${id}" aria-expanded="${open}">${open ? labels[1] : labels[0]}</button>
+    <div id="${id}-x"${open ? "" : " hidden"}>${open ? transcript(msgs, S.dIdx, { refs }) : ""}</div>`;
+}
+
+function drawDigest() {
+  const d = S.digest, idx = S.dIdx, secs = digestSections();
+  DIGEST_TX = {};
+  const multi = secs.length > 1;
+  const nTopics = [...idx.groups.values()].reduce((n, g) => n + g.topics.size, 0);
+  const toc = [], parts = [];
+  let sid = 0;
+  for (const s of secs) {
+    if (multi) { parts.push(`<h2 class="group-title">${esc(s.title)}</h2>`); toc.push({ group: s.title }); }
+    if (s.highlights.length) {
+      const id = `s${sid++}`;
+      toc.push({ id, title: "Needs attention", n: s.highlights.length, att: true });
+      parts.push(`<div class="attention" id="${id}"><h2>Needs attention</h2>${points(s.highlights, s.gid)}</div>`);
+    }
+    for (const t of s.topics) {
+      const id = `s${sid++}`, refs = new Set(t.bullets.flatMap(b => (b.refs || []).map(r => s.gid + ":" + r)));
+      toc.push({ id, title: t.title, n: t.msgs.length });
+      parts.push(`<section class="topic" id="${id}"><h2><span>${esc(t.title)}</span><span class="count">${plural(t.msgs.length, "message", "messages")}</span></h2>
+        ${points(t.bullets, s.gid)}
+        ${t.msgs.length ? convBlock(id, t.msgs, refs, ["Read the conversation", "Hide the conversation"]) : ""}</section>`);
+    }
+    if (s.rest.length) {
+      const id = `s${sid++}`;
+      toc.push({ id, title: "Also active", n: s.rest.length });
+      parts.push(`<section class="also" id="${id}"><h2>Also active, not summarised</h2>${s.rest.map(t => {
+        const tid = `s${sid++}`;
+        return `<div class="also-row"><span>${esc(t.title)} <span class="muted">(${plural(t.msgs.length, "message", "messages")})</span></span></div>
+          ${convBlock(tid, t.msgs, new Set(), ["Read", "Hide"])}`;
+      }).join("")}</section>`);
     }
   }
-  body.innerHTML = html;
+  const nav = toc.map(x => x.group ? `<div class="nav-group">${esc(x.group)}</div>`
+    : `<button class="nav-item${x.att ? " att" : ""}" data-scroll="${x.id}"><span>${esc(x.title)}</span><span class="n">${x.n}</span></button>`).join("");
+  const navSel = toc.filter(x => x.id).map(x => `<option value="${x.id}">${esc(x.title)}</option>`).join("");
+  const pick = S.digests.length > 1
+    ? `<label class="field"><span>Digest</span><select id="dpick">${S.digests.map(x => `<option value="${esc(x.name)}"${x.name === S.digestName ? " selected" : ""}>${esc(x.title || x.name)}</option>`).join("")}</select></label>` : "";
+  $("#view").innerHTML = `<div class="layout">
+    <aside class="side">${pick}<div class="nav-list">${nav}</div>
+      <label class="field nav-select"><span>Section</span><select id="dnav"><option value="">Jump to a section</option>${navSel}</select></label></aside>
+    <main class="main">
+      <header class="ph"><h1>${esc(d.title || dayLabel(dayKey(d.to)))}</h1>
+        <p class="sub">${plural(idx.msgs.length, "message", "messages")} in ${plural(nTopics, "subgroup", "subgroups")}, from ${esc(shortWhen(d.from))} to ${esc(shortWhen(d.to))}.</p></header>
+      ${parts.join("")}
+    </main></div>`;
+  const dp = $("#dpick"); if (dp) dp.onchange = () => { S.digestName = dp.value; renderDigest(); };
+  $("#dnav").onchange = e => { const el = document.getElementById(e.target.value); if (el) el.scrollIntoView({ behavior: reduced ? "auto" : "smooth" }); e.target.value = ""; };
 }
 
-// ---------- Messages tab ----------
-async function renderMessagesTab() {
-  const el = $("#tab-messages");
-  const dates = await api("/api/dates").catch(() => []);
-  el.innerHTML = `<div class="controls">
-      <select id="msel"><option value="24h">Last 24 hours</option>${dates.map(d => `<option value="${d}">${d}</option>`).join("")}</select>
-      <input type="search" id="mfilter" placeholder="Filter by text or name">
-    </div><div id="mbody"></div>`;
-  $("#msel").onchange = loadMessages;
-  $("#mfilter").oninput = () => drawMessages();
-  loadMessages();
+// ---------- Messages ----------
+function rangeFor(key) {
+  if (key === "24h") { const to = new Date(); return { from: new Date(to - 864e5), to, label: "in the last 24 hours" }; }
+  const from = new Date(key + "T00:00:00");
+  return { from, to: new Date(from.getTime() + 864e5), label: "on " + dayLabel(key) };
 }
 
-let MSGS = [];
+async function renderMessages() {
+  $("#view").innerHTML = `<div class="layout single"><main class="main"><p class="muted">Loading…</p></main></div>`;
+  S.dates = await api("/api/dates").catch(() => []);
+  await loadMessages();
+}
+
 async function loadMessages() {
-  const v = $("#msel").value;
-  let from, to;
-  if (v === "24h") { to = new Date(); from = new Date(to - 864e5); }
-  else { from = new Date(v + "T00:00:00"); to = new Date(from.getTime() + 864e5); }
-  $("#mbody").innerHTML = `<p class="muted">Loading…</p>`;
-  MSGS = await api(`/api/messages?from=${encodeURIComponent(localISO(from))}&to=${encodeURIComponent(localISO(to))}`);
+  const r = rangeFor(S.msgRange);
+  const msgs = await api(`/api/messages?from=${encodeURIComponent(localISO(r.from))}&to=${encodeURIComponent(localISO(r.to))}`);
+  S.msgIdx = index(msgs);
+  const idx = S.msgIdx;
+  const ok = S.sel && idx.groups.has(S.sel.gid) && idx.groups.get(S.sel.gid).topics.has(S.sel.topic);
+  if (!ok) {
+    const g = sortedGroups(idx)[0];
+    S.sel = g ? { gid: g.id, topic: sortedTopics(g)[0].key } : null;
+    S.thread = null;
+  }
   drawMessages();
 }
 
-function shownMessages() {
-  const q = ($("#mfilter").value || "").toLowerCase();
-  return q ? MSGS.filter(m => (m.text + " " + m.sender + " " + m.media).toLowerCase().includes(q)) : MSGS;
-}
-
 function drawMessages() {
-  const q = ($("#mfilter").value || "").toLowerCase();
-  const msgs = shownMessages();
-  if (!msgs.length) {
-    $("#mbody").innerHTML = `<div class="empty">${MSGS.length ? "Nothing matches." : "No messages exported for this period."}</div>`;
-    return;
-  }
-  const byId = byIdMap(MSGS);
-  let html = "";
-  for (const g of tree(msgs).values()) {
-    html += `<h3 class="group">${esc(g.title)}</h3>`;
-    const topics = [...g.topics.values()].sort((a, b) => b.msgs.length - a.msgs.length);
-    for (const tp of topics) {
-      html += `<div class="topic"><details${q ? " open" : ""}><summary><b>${esc(tp.title)}</b> · ${tp.msgs.length} message${tp.msgs.length === 1 ? "" : "s"} · latest ${hhmm(tp.msgs[tp.msgs.length - 1].date)}</summary>
-        ${tp.msgs.map(m => msgHTML(m, byId, false)).join("")}</details></div>`;
+  const idx = S.msgIdx, r = rangeFor(S.msgRange);
+  const rangeOpts = `<option value="24h"${S.msgRange === "24h" ? " selected" : ""}>Last 24 hours</option>` +
+    S.dates.map(d => `<option value="${d}"${S.msgRange === d ? " selected" : ""}>${esc(dayLabel(d))}</option>`).join("");
+  let nav = "", navSel = "";
+  for (const g of sortedGroups(idx)) {
+    nav += `<div class="nav-group">${esc(g.title)}</div>`;
+    navSel += `<optgroup label="${esc(g.title)}">`;
+    for (const t of sortedTopics(g)) {
+      const on = S.sel && S.sel.gid === g.id && S.sel.topic === t.key && !S.q;
+      nav += `<button class="nav-item${on ? " on" : ""}" data-gid="${esc(g.id)}" data-topic="${esc(t.key)}"><span>${esc(t.title)}</span><span class="n">${t.msgs.length}</span></button>`;
+      navSel += `<option value="${esc(g.id + "|" + t.key)}"${on ? " selected" : ""}>${esc(t.title)} (${t.msgs.length})</option>`;
     }
+    navSel += `</optgroup>`;
   }
-  $("#mbody").innerHTML = html;
+  let main;
+  if (!idx.msgs.length) {
+    main = `<div class="empty"><h1>Nothing here yet</h1><p>No messages were saved ${esc(r.label)}. If you've just set things up, use Fetch now in Setup.</p></div>`;
+  } else if (S.q) {
+    main = searchResults(idx);
+  } else if (S.thread) {
+    const msgs = threadOf(S.thread, idx), root = msgs[0];
+    const back = S.sel && idx.groups.get(S.sel.gid) ? idx.groups.get(S.sel.gid).topics.get(S.sel.topic) : null;
+    main = `<button class="back" data-back>Back${back ? " to " + esc(back.title) : ""}</button>
+      <header class="ph"><h1>Thread</h1><p class="sub">Started by ${esc(root.sender)} at ${hhmm(root.date)}, ${plural(msgs.length, "message", "messages")}.</p></header>
+      ${transcript(msgs, idx, { threads: false, refs: new Set([S.thread]) })}`;
+  } else {
+    const g = idx.groups.get(S.sel.gid), t = g.topics.get(S.sel.topic);
+    main = `<header class="ph"><h1>${esc(t.title)}</h1><p class="sub">${esc(g.title)}, ${plural(t.msgs.length, "message", "messages")} ${esc(r.label)}.</p></header>
+      ${transcript(t.msgs, idx, { threads: true })}`;
+  }
+  $("#view").innerHTML = `<div class="layout">
+    <aside class="side">
+      <label class="field"><span>Period</span><select id="mrange">${rangeOpts}</select></label>
+      <label class="field"><span>Search</span><input type="search" id="mq" placeholder="Words or a name" value="${esc(S.q)}"></label>
+      ${navSel ? `<label class="field nav-select"><span>Subgroup</span><select id="mnav">${navSel}</select></label>` : ""}
+      <div class="nav-list">${nav}</div>
+    </aside>
+    <main class="main">${main}</main></div>`;
+  $("#mrange").onchange = e => { S.msgRange = e.target.value; S.thread = null; loadMessages(); };
+  const q = $("#mq");
+  q.oninput = () => { clearTimeout(q._t); q._t = setTimeout(() => {
+    S.q = q.value.trim(); S.thread = null; drawMessages();
+    const n = $("#mq"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+  const mn = $("#mnav"); if (mn) mn.onchange = e => { const [gid, topic] = e.target.value.split("|"); S.sel = { gid, topic }; S.thread = null; S.q = ""; drawMessages(); };
 }
 
-// ---------- Setup tab ----------
+function searchResults(idx) {
+  const q = S.q.toLowerCase();
+  const hits = idx.msgs.filter(m => (m.text + " " + m.sender + " " + m.media).toLowerCase().includes(q));
+  if (!hits.length) return `<div class="empty"><h1>No matches</h1><p>Nothing ${esc(rangeFor(S.msgRange).label)} mentions “${esc(S.q)}”.</p></div>`;
+  const re = new RegExp(S.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  const mark = s => esc(s).replace(re, x => `<mark>${x}</mark>`);
+  return `<header class="ph"><h1>Search</h1><p class="sub">${plural(hits.length, "message", "messages")} matching “${esc(S.q)}”.</p></header>` +
+    hits.map(m => `<button class="hit" data-open="${esc(m.group_id + "|" + m.topic_id + "|" + m.group_id + ":" + m.id)}">
+      <div class="meta">${esc(m.topic || m.group)}, ${hhmm(m.date)}</div>
+      <div class="who" style="--h:${hue(m.sender)}">${mark(m.sender)}</div>
+      <div class="body">${mark(trunc(m.text || m.media, 280))}</div></button>`).join("");
+}
+
+// ---------- shared clicks ----------
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto]");
+  if (!t) return;
+  const d = t.dataset;
+  if (d.jump) {
+    e.preventDefault();
+    if (!flashTo(d.jump) && S.tab === "messages") { S.thread = d.jump; drawMessages(); window.scrollTo(0, 0); }
+  } else if (d.thread) {
+    S.thread = d.thread; drawMessages(); window.scrollTo(0, 0);
+  } else if (t.hasAttribute("data-back")) {
+    const k = S.thread; S.thread = null; drawMessages(); flashTo(k);
+  } else if (d.gid) {
+    S.sel = { gid: d.gid, topic: d.topic }; S.thread = null; S.q = ""; drawMessages(); window.scrollTo(0, 0);
+  } else if (d.open) {
+    const [gid, topic, key] = d.open.split("|");
+    S.sel = { gid, topic }; S.q = ""; S.thread = null; drawMessages(); flashTo(key);
+  } else if (d.scroll) {
+    const el = document.getElementById(d.scroll);
+    if (el) el.scrollIntoView({ behavior: reduced ? "auto" : "smooth" });
+  } else if (d.expand) {
+    const id = d.expand, box = document.getElementById(id + "-x"), tx = DIGEST_TX[id];
+    const opening = box.hidden;
+    if (opening && !box.innerHTML) box.innerHTML = transcript(tx.msgs, S.dIdx, { refs: tx.refs });
+    box.hidden = !opening;
+    opening ? S.open.add(id) : S.open.delete(id);
+    t.textContent = opening ? tx.labels[1] : tx.labels[0];
+    t.setAttribute("aria-expanded", opening);
+  } else if (d.goto) {
+    show(d.goto);
+  }
+});
+
+// ---------- source preview on hover ----------
+const pop = $("#pop");
+function hidePop() { pop.hidden = true; }
+function showPop(a) {
+  const m = S.dIdx && S.dIdx.byId.get(a.dataset.key);
+  if (!m) return;
+  pop.innerHTML = `<div class="meta"><b class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}</b><span>${esc(m.topic || m.group)}, ${hhmm(m.date)}</span></div>
+    <div class="body">${m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : ""}${esc(trunc(m.text, 420))}</div>
+    <div class="hint">Click to open in Telegram</div>`;
+  pop.hidden = false;
+  const r = a.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  const x = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), innerWidth - w - 12);
+  let y = r.bottom + 8;
+  if (y + h > innerHeight - 12) y = r.top - h - 8;
+  pop.style.left = x + "px"; pop.style.top = Math.max(12, y) + "px";
+}
+document.addEventListener("mouseover", e => { const a = e.target.closest(".pip[data-key]"); if (a) showPop(a); });
+document.addEventListener("mouseout", e => { if (e.target.closest(".pip[data-key]")) hidePop(); });
+document.addEventListener("focusin", e => { const a = e.target.closest(".pip[data-key]"); a ? showPop(a) : hidePop(); });
+addEventListener("scroll", hidePop, { passive: true });
+
+// ---------- Setup ----------
 let GROUPS = null, SEL = null, TOPICS = {}, NEED_PW = false, SHOW_KEYS = false;
 
 async function renderSetup() {
   const s = await refreshStatus();
-  const el = $("#tab-setup");
+  const [hc, ht] = health(s);
   const step1 = s.keys && !SHOW_KEYS
-    ? `<p class="ok">✓ API keys saved. <button class="link" id="chkeys">Change</button></p>`
-    : `<p class="muted">Create an app at <a href="https://my.telegram.org/apps" target="_blank" rel="noopener">my.telegram.org/apps</a> and paste its api_id and api_hash.</p>
-       <div class="row"><input type="text" id="apiid" placeholder="api_id" size="12">
-       <input type="password" id="apihash" placeholder="api_hash" size="34">
-       <button class="primary" id="savekeys">Save</button></div>`;
+    ? `<p class="okc">API keys saved. <button class="link" id="chkeys">Change</button></p>`
+    : `<p class="muted">Create an app at <a href="https://my.telegram.org/apps" target="_blank" rel="noopener">my.telegram.org/apps</a>, then paste its api_id and api_hash.</p>
+       <div class="row"><input type="text" id="apiid" placeholder="api_id" style="max-width:150px"><input type="password" id="apihash" placeholder="api_hash"><button class="btn" id="savekeys">Save keys</button></div>`;
   let step2;
   if (!s.keys) step2 = `<p class="muted">Save your API keys first.</p>`;
-  else if (s.authorized) step2 = `<p class="ok">✓ Logged in as ${esc(s.me)}.</p>`;
+  else if (s.authorized) step2 = `<p class="okc">Logged in as ${esc(s.me)}.</p>`;
   else if (NEED_PW) step2 = `<p>Your account has a two-step verification password.</p>
-      <div class="row"><input type="password" id="pw" placeholder="Password"><button class="primary" id="sendpw">Log in</button></div>`;
-  else if (s.code_sent) step2 = `<p>Enter the code Telegram just sent to your Telegram app.</p>
-      <div class="row"><input type="text" id="code" placeholder="Code" size="8" autocomplete="one-time-code"><button class="primary" id="sendcode">Log in</button>
+      <div class="row"><input type="password" id="pw" placeholder="Password"><button class="btn" id="sendpw">Log in</button></div>`;
+  else if (s.code_sent) step2 = `<p>Type the code Telegram just sent to your Telegram app.</p>
+      <div class="row"><input type="text" id="code" placeholder="Code" style="max-width:140px" autocomplete="one-time-code"><button class="btn" id="sendcode">Log in</button>
       <button class="link" id="restart">Use a different number</button></div>`;
-  else step2 = `<p class="muted">Logging in creates a read-only session for this app. It shows up in Telegram → Settings → Devices.</p>
-      <div class="row"><input type="text" id="phone" placeholder="+48 …" size="18"><button class="primary" id="sendphone">Send code</button></div>`;
-  el.innerHTML = `
-    <div class="card"><h2>1 · Telegram API keys</h2>${step1}<div class="err" id="e1"></div></div>
-    <div class="card"><h2>2 · Telegram account</h2>${step2}<div class="err" id="e2"></div></div>
-    <div class="card"><h2>3 · Groups & subgroups</h2><div id="groups">${s.authorized ? `<p class="muted">Loading your groups…</p>` : `<p class="muted">Log in first.</p>`}</div></div>
-    <div class="card"><h2>4 · Export</h2>
-      <p>Last export: <b>${fmtWhen(s.last_export)}</b>${s.last_result ? ` · ${s.last_result.total} new message(s)` : ""}. New messages are fetched every 2 hours while your Mac is awake.</p>
-      <div class="row"><button class="primary" id="exnow" ${s.authorized && !s.exporting ? "" : "disabled"}>${s.exporting ? "Exporting…" : "Export now"}</button>
-      <button class="secondary" id="exre" ${s.authorized && !s.exporting ? "" : "disabled"}>Re-fetch last 24 hours</button>
-      <span id="exmsg" class="muted"></span></div></div>`;
+  else step2 = `<p class="muted">This creates a read-only session for this app. It shows up in Telegram under Settings, Devices.</p>
+      <div class="row"><input type="text" id="phone" placeholder="+48 600 000 000" style="max-width:220px"><button class="btn" id="sendphone">Send code</button></div>`;
+  const next = s.next_export ? new Date(s.next_export) : null;
+  const nextText = !s.authorized || !s.selected ? "After setup is finished"
+    : s.exporting ? "Fetching now"
+    : next && next > new Date() ? `Around ${next.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}` : "Within a few minutes";
+  const lastText = s.last_export
+    ? new Date(s.last_export).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) + (s.last_count != null ? `, ${plural(s.last_count, "new message", "new messages")}` : "")
+    : "Not yet";
+  $("#view").innerHTML = `<div class="layout single"><main class="main">
+    <header class="ph"><h1>Setup</h1><p class="sub">Connect Telegram, pick what to follow, and check that fetching runs.</p></header>
+    <div class="panel"><h2>Fetching</h2>
+      <dl class="facts">
+        <dt>Status</dt><dd><span class="dot ${hc}"></span><span>${esc(ht)}</span></dd>
+        <dt>Background</dt><dd>${s.background
+          ? `<span class="dot ok"></span><span>Runs in the background and starts when you log in to your Mac.</span>`
+          : `<span class="dot warn"></span><span>Not running as a background service, so it stops when its process is closed. Run the install line again to fix this.</span>`}</dd>
+        <dt>Last fetch</dt><dd>${esc(lastText)}</dd>
+        <dt>Next fetch</dt><dd>${esc(nextText)}</dd>
+        ${s.last_error ? `<dt>Problem</dt><dd class="errc">${esc(s.last_error)}</dd>` : ""}
+      </dl>
+      <p class="muted">New messages are fetched every ${s.interval_hours || 2} hours while your Mac is awake. Digests come from your AI assistant, when you ask for one or on a schedule you set up with it.</p>
+      <div class="row"><button class="btn" id="exnow" ${s.authorized && !s.exporting ? "" : "disabled"}>${s.exporting ? "Fetching…" : "Fetch now"}</button>
+        <button class="btn ghost" id="exre" ${s.authorized && !s.exporting ? "" : "disabled"}>Re-fetch the last 24 hours</button>
+        <span id="exmsg" class="muted"></span></div>
+    </div>
+    <div class="panel"><h2>Telegram API keys</h2>${step1}<div class="errc" id="e1"></div></div>
+    <div class="panel"><h2>Telegram account</h2>${step2}<div class="errc" id="e2"></div></div>
+    <div class="panel"><h2>Groups and subgroups</h2><div id="groups">${s.authorized ? `<p class="muted">Loading your groups…</p>` : `<p class="muted">Log in first.</p>`}</div></div>
+  </main></div>`;
   const on = (id, fn) => { const b = $("#" + id); if (b) b.onclick = fn; };
   const guard = (errId, fn) => async () => { $("#" + errId).textContent = ""; try { await fn(); } catch (e) { $("#" + errId).textContent = e.message; } };
   on("chkeys", () => { SHOW_KEYS = true; renderSetup(); });
@@ -327,14 +636,15 @@ async function renderSetup() {
   on("sendcode", guard("e2", async () => { const r = await api("/api/login/code", { code: $("#code").value }); NEED_PW = !!r.need_password; renderSetup(); }));
   on("sendpw", guard("e2", async () => { await api("/api/login/password", { password: $("#pw").value }); NEED_PW = false; renderSetup(); }));
   on("restart", guard("e2", async () => { await api("/api/login/reset", {}); NEED_PW = false; renderSetup(); }));
-  const runExport = days => async () => {
-    $("#exmsg").textContent = "Exporting…";
-    try { const r = await api("/api/export", days ? { rebuild_days: days } : {}); $("#exmsg").textContent = r.busy ? "Already running." : `Done · ${r.total} new message(s).`; }
-    catch (e) { $("#exmsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-    refreshStatus();
+  const fetchNow = days => async () => {
+    $("#exmsg").textContent = "Fetching…"; $("#exnow").disabled = $("#exre").disabled = true;
+    try { const r = await api("/api/export", days ? { rebuild_days: days } : {}); $("#exmsg").textContent = r.busy ? "Already fetching." : `Fetched ${plural(r.total, "new message", "new messages")}.`; }
+    catch (e) { $("#exmsg").innerHTML = `<span class="errc">${esc(e.message)}</span>`; }
+    await refreshStatus();
+    $("#exnow").disabled = $("#exre").disabled = false;
   };
-  on("exnow", runExport(null));
-  on("exre", runExport(1));
+  on("exnow", fetchNow(null));
+  on("exre", fetchNow(1));
   if (s.authorized) loadGroups();
 }
 
@@ -343,74 +653,59 @@ async function loadGroups() {
   try {
     if (!GROUPS) GROUPS = await api("/api/groups");
     if (!SEL) SEL = (await api("/api/selection")).groups || {};
-  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
-  box.innerHTML = `<div class="row"><input type="search" id="gfilter" placeholder="Search your ${GROUPS.length} groups and channels" style="flex:1"></div>
+  } catch (e) { box.innerHTML = `<p class="errc">${esc(e.message)}</p>`; return; }
+  box.innerHTML = `<input type="search" id="gfilter" placeholder="Search your ${GROUPS.length} groups and channels">
     <div id="grouplist"></div>
-    <div class="savebar"><button class="primary" id="savesel">Save selection</button><span id="selmsg" class="muted"></span></div>`;
+    <div class="row"><button class="btn" id="savesel">Save selection</button><span id="selmsg" class="muted"></span></div>`;
   $("#gfilter").oninput = drawGroups;
   $("#savesel").onclick = async () => {
-    try { const r = await api("/api/selection", { groups: SEL }); $("#selmsg").textContent = `Saved · ${r.selected} group(s). Use "Export now" to fetch them right away.`; refreshStatus(); }
-    catch (e) { $("#selmsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+    try { const r = await api("/api/selection", { groups: SEL }); $("#selmsg").textContent = `Saved, following ${plural(r.selected, "group", "groups")}. Use Fetch now to get their messages right away.`; refreshStatus(); }
+    catch (e) { $("#selmsg").innerHTML = `<span class="errc">${esc(e.message)}</span>`; }
   };
   drawGroups();
 }
 
-function groupState(g) {
-  const s = SEL[g.id];
-  if (!s) return "off";
-  if (s.topics === "all") return "on";
-  return "some";
-}
+function groupState(g) { const s = SEL[g.id]; return !s ? "off" : s.topics === "all" ? "on" : "some"; }
 
 function drawGroups() {
   const q = ($("#gfilter").value || "").toLowerCase();
-  const list = GROUPS.filter(g => g.title.toLowerCase().includes(q))
-    .sort((a, b) => (SEL[b.id] ? 1 : 0) - (SEL[a.id] ? 1 : 0));
+  const list = GROUPS.filter(g => g.title.toLowerCase().includes(q)).sort((a, b) => (SEL[b.id] ? 1 : 0) - (SEL[a.id] ? 1 : 0));
   $("#grouplist").innerHTML = list.map(g => {
-    const st = groupState(g);
-    const n = SEL[g.id] && SEL[g.id].topics !== "all" ? `${SEL[g.id].topics.length} topic(s)` : "";
-    return `<div class="grp" data-gid="${esc(g.id)}">
-      <div class="row"><label><input type="checkbox" class="gchk" ${st !== "off" ? "checked" : ""}>
-        <span>${esc(g.title)}</span>
-        <span class="badge">${g.forum ? "has subgroups" : g.kind}</span>${n ? `<span class="badge">${n}</span>` : ""}</label>
-        ${g.forum ? `<button class="link tbtn">${TOPICS[g.id] && TOPICS[g.id].open ? "Hide subgroups" : "Choose subgroups"}</button>` : ""}</div>
-      ${g.forum && TOPICS[g.id] && TOPICS[g.id].open ? `<div class="topics">${topicsHTML(g)}</div>` : ""}
+    const st = groupState(g), open = TOPICS[g.id] && TOPICS[g.id].open;
+    const n = SEL[g.id] && SEL[g.id].topics !== "all" ? `<span class="badge">${plural(SEL[g.id].topics.length, "subgroup", "subgroups")}</span>` : "";
+    return `<div class="grp" data-g="${esc(g.id)}">
+      <div class="row" style="margin:0"><label><input type="checkbox" class="gchk" ${st !== "off" ? "checked" : ""}><span>${esc(g.title)}</span>
+        ${g.forum ? `<span class="badge">has subgroups</span>` : g.kind === "channel" ? `<span class="badge">channel</span>` : ""}${n}</label>
+        ${g.forum ? `<button class="link tbtn">${open ? "Hide subgroups" : "Choose subgroups"}</button>` : ""}</div>
+      ${g.forum && open ? `<div class="topics">${topicsHTML(g)}</div>` : ""}
     </div>`;
-  }).join("") || `<p class="muted">No match.</p>`;
-  document.querySelectorAll(".grp").forEach(row => {
-    const g = GROUPS.find(x => x.id === row.dataset.gid);
-    const chk = $(".gchk", row);
+  }).join("") || `<p class="muted">No group matches.</p>`;
+  $$(".grp").forEach(row => {
+    const g = GROUPS.find(x => x.id === row.dataset.g), chk = $(".gchk", row);
     chk.indeterminate = groupState(g) === "some";
     chk.onchange = () => { if (chk.checked) SEL[g.id] = { title: g.title, forum: g.forum, topics: "all" }; else delete SEL[g.id]; drawGroups(); };
-    const tb = $(".tbtn", row);
-    if (tb) tb.onclick = () => toggleTopics(g);
-    row.querySelectorAll(".tchk").forEach(c => c.onchange = () => toggleTopic(g, +c.dataset.tid, c.checked));
+    const tb = $(".tbtn", row); if (tb) tb.onclick = () => toggleTopics(g);
+    $$(".tchk", row).forEach(c => c.onchange = () => toggleTopic(g, +c.dataset.tid, c.checked));
   });
 }
 
 async function toggleTopics(g) {
   if (TOPICS[g.id] && TOPICS[g.id].list) { TOPICS[g.id].open = !TOPICS[g.id].open; return drawGroups(); }
-  TOPICS[g.id] = { open: true, list: null };
-  drawGroups();
-  try { TOPICS[g.id].list = await api("/api/topics?gid=" + encodeURIComponent(g.id)); }
-  catch (e) { TOPICS[g.id].error = e.message; }
+  TOPICS[g.id] = { open: true, list: null }; drawGroups();
+  try { TOPICS[g.id].list = await api("/api/topics?gid=" + encodeURIComponent(g.id)); } catch (e) { TOPICS[g.id].error = e.message; }
   drawGroups();
 }
 
 function topicsHTML(g) {
   const t = TOPICS[g.id];
-  if (t.error) return `<span class="err">${esc(t.error)}</span>`;
+  if (t.error) return `<span class="errc">${esc(t.error)}</span>`;
   if (!t.list) return `<span class="muted">Loading subgroups…</span>`;
   const s = SEL[g.id];
-  return t.list.map(tp => {
-    const on = !!s && (s.topics === "all" || s.topics.includes(tp.id));
-    return `<label><input type="checkbox" class="tchk" data-tid="${tp.id}" ${on ? "checked" : ""}> ${esc(tp.title)}</label>`;
-  }).join("");
+  return t.list.map(tp => `<label><input type="checkbox" class="tchk" data-tid="${tp.id}" ${s && (s.topics === "all" || s.topics.includes(tp.id)) ? "checked" : ""}> ${esc(tp.title)}</label>`).join("");
 }
 
 function toggleTopic(g, tid, on) {
-  const all = TOPICS[g.id].list.map(t => t.id);
-  const s = SEL[g.id];
+  const all = TOPICS[g.id].list.map(t => t.id), s = SEL[g.id];
   let cur = s ? (s.topics === "all" ? all.slice() : s.topics.slice()) : [];
   cur = on ? [...new Set([...cur, tid])] : cur.filter(t => t !== tid);
   if (!cur.length) delete SEL[g.id];
@@ -421,8 +716,9 @@ function toggleTopic(g, tid, on) {
 // ---------- start ----------
 (async () => {
   const s = await refreshStatus();
+  const want = location.hash.slice(1);
   const ready = s.keys && s.authorized && s.selected > 0;
-  show(TAB && ["digest", "messages", "setup"].includes(TAB) ? TAB : (ready ? "digest" : "setup"));
+  show(["digest", "messages", "setup"].includes(want) ? want : ready ? "digest" : "setup");
   setInterval(refreshStatus, 60000);
 })();
 </script>

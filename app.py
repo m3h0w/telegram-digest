@@ -28,6 +28,7 @@ PORT = int(os.environ.get("TGD_PORT", "8765"))
 UI = core.ROOT / "ui.html"
 DIGESTS = core.ROOT / "digests"
 EXPORT_EVERY_S = 2 * 3600
+SERVICE_LABELS = {"local.telegram-digest", "com.michal.telegram-digest"}
 log = core.log
 
 
@@ -74,11 +75,16 @@ class Telegram:
 
     async def status(self):
         st = core.load_state()
+        last = core.last_export_time()
         out = {
             "keys": core.has_keys(), "authorized": False, "me": None,
             "code_sent": self.phone is not None,
             "selected": len(core.load_selection()["groups"]),
-            "last_export": st.get("last_export"), "exporting": self.exporting,
+            "last_export": st.get("last_export"), "last_count": st.get("last_count"),
+            "next_export": (last + dt.timedelta(seconds=EXPORT_EVERY_S)).isoformat() if last else None,
+            "interval_hours": EXPORT_EVERY_S / 3600,
+            "background": os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS or os.getppid() == 1,
+            "exporting": self.exporting,
             "last_result": self.last_result, "last_error": self.last_error,
         }
         if out["keys"]:

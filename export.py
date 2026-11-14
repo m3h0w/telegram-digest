@@ -366,6 +366,7 @@ async def export(client, rebuild_days=None, days_back=None):
         summary["total"] += n
         log(f"{title}: {n} new message(s)")
     st["last_export"] = now.isoformat(timespec="seconds")
+    st["last_count"] = summary["total"]
     st["needs_rebuild"] = False
     save_state(st)
     return summary
