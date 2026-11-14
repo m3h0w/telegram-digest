@@ -11,6 +11,7 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -53,13 +54,38 @@ tell it what you do or don't care about. Edit it freely.
 """
 
 
+DEFAULTS = {
+    "fetch_every_minutes": 120,      # how often to fetch new messages
+    "notify": "attention",           # attention | all | off
+    "digest_mode": "auto",           # auto | manual
+    "digest_engine": "auto",         # auto | claude | codex
+    "digest_schedule": "every",      # after_fetch | every | daily
+    "digest_every_hours": 4,
+    "digest_daily_at": "08:00",
+    "digest_period": "since_last",   # since_last | last_24h
+    "digest_min_new": 1,
+}
+CHOICES = {
+    "fetch_every_minutes": FETCH_CHOICES,
+    "notify": ("attention", "all", "off"),
+    "digest_mode": ("auto", "manual"),
+    "digest_engine": ("auto", "claude", "codex"),
+    "digest_schedule": ("after_fetch", "every", "daily"),
+    "digest_every_hours": (1, 2, 4, 8, 12),
+    "digest_period": ("since_last", "last_24h"),
+    "digest_min_new": (1, 3, 5, 10, 20),
+}
+
+
 def load_settings():
     try:
         st = json.loads(SETTINGS.read_text())
     except Exception:
         st = {}
-    st.setdefault("fetch_every_minutes", 120)
-    st.setdefault("notify", True)
+    if isinstance(st.get("notify"), bool):          # older versions stored on/off
+        st["notify"] = "attention" if st["notify"] else "off"
+    for k, v in DEFAULTS.items():
+        st.setdefault(k, v)
     st.setdefault("last_seen_digest", None)
     st.setdefault("notified_digests", [])
     return st
@@ -101,6 +127,111 @@ def notify(title, text):
         pass
 
 
+# ---------- automatic digests via the person's own AI tool ----------
+
+DSTATE = core.ROOT / ".digest-state.json"
+ENGINE_NAMES = {"claude": "Claude Code", "codex": "Codex"}
+
+
+def tool_path():
+    home = os.path.expanduser("~")
+    extra = [f"{home}/.local/bin", f"{home}/.claude/local", f"{home}/bin", f"{home}/.npm-global/bin",
+             f"{home}/.bun/bin", f"{home}/.volta/bin", f"{home}/.codex/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+    nvm = os.path.join(home, ".nvm", "versions", "node")
+    if os.path.isdir(nvm):
+        extra += [os.path.join(nvm, v, "bin") for v in sorted(os.listdir(nvm), reverse=True)]
+    parts = os.environ.get("PATH", "").split(os.pathsep) + extra
+    return os.pathsep.join(dict.fromkeys(p for p in parts if p))
+
+
+def find_engines():
+    path = tool_path()
+    return {k: shutil.which(k, path=path) for k in ENGINE_NAMES}
+
+
+def pick_engine(st=None):
+    st = st or load_settings()
+    found = find_engines()
+    pref = st.get("digest_engine", "auto")
+    if pref in found:
+        return (pref, found[pref]) if found[pref] else (None, None)
+    for k in ("claude", "codex"):
+        if found[k]:
+            return k, found[k]
+    return None, None
+
+
+def load_dstate():
+    try:
+        return json.loads(DSTATE.read_text())
+    except Exception:
+        return {}
+
+
+def save_dstate(ds):
+    DSTATE.write_text(json.dumps(ds, indent=1))
+
+
+def newest_digest_to():
+    items = _read_digests()
+    return items[0][1].get("to") if items else None
+
+
+def digest_period(st=None):
+    st = st or load_settings()
+    now = dt.datetime.now().astimezone()
+    last = newest_digest_to()
+    if st.get("digest_period") == "since_last" and last:
+        start = dt.datetime.fromisoformat(last)
+        if now - start > dt.timedelta(days=7):      # don't let one update cover weeks
+            start = now - dt.timedelta(days=7)
+    else:
+        start = now - dt.timedelta(days=1)
+    return start, now
+
+
+DIGEST_PROMPT = """You are running unattended in the Telegram Digest folder to write a digest. Nobody can answer questions.
+
+Follow HOW-TO-DIGEST.md in this folder exactly, with these specifics:
+- Messages were fetched just now, so don't create the fetch-now file.
+- Cover the period from {start} to {end}. Use exactly these as "from" and "to".
+- Apply what-matters.md. You may fold lines from its "Feedback from the digest" section into rules, as HOW-TO-DIGEST.md describes.
+- If there are no new messages in the period, write nothing and reply "Nothing new."
+- Otherwise write exactly one digest file in digests/ as described, then reply with one short line saying what you wrote.
+- Only read exports/, .state.json, what-matters.md, HOW-TO-DIGEST.md and digests/. Only write in digests/ and what-matters.md."""
+
+
+def run_engine(kind, path, start, end):
+    prompt = DIGEST_PROMPT.format(start=start.isoformat(timespec="seconds"), end=end.isoformat(timespec="seconds"))
+    if kind == "claude":
+        cmd = [path, "-p", prompt, "--permission-mode", "acceptEdits",
+               "--allowedTools", "Read,Write,Edit,Glob,Grep", "--output-format", "text"]
+    else:
+        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never", prompt]
+    env = dict(os.environ, PATH=tool_path())
+    env.pop("ANTHROPIC_API_KEY", None)   # use the person's subscription, not a pay-as-you-go key
+    env.pop("OPENAI_API_KEY", None)
+    (core.ROOT / "logs").mkdir(exist_ok=True)
+    try:
+        r = subprocess.run(cmd, cwd=str(core.ROOT), env=env, capture_output=True, text=True, timeout=900)
+        out, err, code = r.stdout or "", r.stderr or "", r.returncode
+    except subprocess.TimeoutExpired:
+        out, err, code = "", "Timed out after 15 minutes.", -1
+    except Exception as e:
+        out, err, code = "", str(e), -1
+    with (core.ROOT / "logs" / "digest.log").open("a", encoding="utf-8") as fh:
+        fh.write(f"\n=== {dt.datetime.now():%Y-%m-%d %H:%M:%S} {ENGINE_NAMES[kind]} exit {code}\n{out[-4000:]}\n{err[-4000:]}\n")
+    return code, out, err
+
+
+def last_line(*texts):
+    for t in texts:
+        lines = [x.strip() for x in (t or "").splitlines() if x.strip()]
+        if lines:
+            return lines[-1][:300]
+    return ""
+
+
 class Telegram:
     """Owns the one Telegram connection, on its own asyncio thread."""
 
@@ -111,6 +242,7 @@ class Telegram:
         self.phone = None
         self.me = None
         self.exporting = False
+        self.digesting = False
         self.last_result = None
         self.last_error = None
         self.submit(self._scheduler())
@@ -157,6 +289,15 @@ class Telegram:
             "background": os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS or os.getppid() == 1,
             "exporting": self.exporting,
             "last_result": self.last_result, "last_error": self.last_error,
+        }
+        st_ = load_settings()
+        kind, _ = pick_engine(st_)
+        ds = load_dstate()
+        out["digest"] = {
+            "mode": st_["digest_mode"], "engine": kind, "engine_name": ENGINE_NAMES.get(kind),
+            "found": {k: bool(v) for k, v in find_engines().items()},
+            "running": self.digesting, "last_run": ds.get("last_run"), "last_ok": ds.get("last_ok"),
+            "last_message": ds.get("last_message"),
         }
         if out["keys"]:
             try:
@@ -221,6 +362,78 @@ class Telegram:
         finally:
             self.exporting = False
 
+    async def run_digest(self, auto=False):
+        if self.digesting:
+            return {"busy": True}
+        self.digesting = True
+        ds = load_dstate()
+        try:
+            last = core.last_export_time()
+            if last is None or (dt.datetime.now(dt.timezone.utc) - last).total_seconds() > 300:
+                try:
+                    await self.export()
+                except Exception:
+                    pass   # write the digest from what's there
+            st = load_settings()
+            kind, path = pick_engine(st)
+            now_iso = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+            ds["last_run"] = now_iso
+            if auto:
+                ds["last_auto_run"] = now_iso
+            if not kind:
+                ds.update(last_ok=False, last_message="No AI tool found. Install Claude Code or Codex and sign in once.")
+                return {"error": ds["last_message"]}
+            start, end = digest_period(st)
+            if not core.read_messages(start, end):
+                ds.update(last_ok=True, last_message="Nothing new since the last digest.")
+                return {"ok": True, "message": ds["last_message"]}
+            before = {n for n, _ in _read_digests()}
+            code, out, err = await asyncio.to_thread(run_engine, kind, path, start, end)
+            new = [(n, d) for n, d in _read_digests() if n not in before]
+            if new:
+                ds.update(last_ok=True, last_message=f"{ENGINE_NAMES[kind]} wrote “{new[0][1].get('title') or new[0][0]}”.")
+                ds.pop("retry_after", None)
+                check_new_digests()
+            elif code == 0:
+                ds.update(last_ok=True, last_message=last_line(out) or "Finished without writing a digest.")
+            else:
+                ds.update(last_ok=False, last_message=f"{ENGINE_NAMES[kind]} failed: {last_line(err, out) or 'no details'}. Is it signed in?")
+                if auto:
+                    ds["retry_after"] = time.time() + 3600
+            return {"ok": ds["last_ok"], "message": ds["last_message"]}
+        finally:
+            save_dstate(ds)
+            self.digesting = False
+
+    async def _maybe_auto_digest(self, fetched_new):
+        st = load_settings()
+        if st["digest_mode"] != "auto" or self.digesting or not pick_engine(st)[0]:
+            return
+        ds = load_dstate()
+        if time.time() < ds.get("retry_after", 0):
+            return
+        now = dt.datetime.now().astimezone()
+        last = ds.get("last_auto_run")
+        last = dt.datetime.fromisoformat(last) if last else None
+        sched = st["digest_schedule"]
+        if sched == "after_fetch":
+            due = fetched_new
+        elif sched == "every":
+            due = last is None or now - last >= dt.timedelta(hours=int(st["digest_every_hours"]))
+        else:
+            hh, mm = (int(x) for x in str(st["digest_daily_at"]).split(":"))
+            target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            due = now >= target and (last is None or last < target)
+        if not due:
+            return
+        start, end = digest_period(st)
+        if len(core.read_messages(start, end)) < int(st["digest_min_new"]):
+            if sched == "daily":   # skip today
+                ds["last_auto_run"] = now.isoformat(timespec="seconds")
+                save_dstate(ds)
+            return
+        await self.run_digest(auto=True)
+
     async def _scheduler(self):
         await asyncio.sleep(15)
         retry_at = 0.0
@@ -231,15 +444,18 @@ class Telegram:
                 last = core.last_export_time()
                 due = requested or last is None or core.load_state().get("needs_rebuild") or \
                     (dt.datetime.now(dt.timezone.utc) - last).total_seconds() >= fetch_every_s()
+                fetched_new = False
                 if due and time.time() >= retry_at and core.has_keys() and core.load_selection()["groups"]:
                     c = await self._client()
                     if await c.is_user_authorized():
                         if requested:
                             FETCH_REQUEST.unlink()
                         try:
-                            await self.export()
+                            res = await self.export()
+                            fetched_new = bool(res and res.get("total"))
                         except Exception:
                             retry_at = time.time() + 300  # back off after a failure
+                await self._maybe_auto_digest(fetched_new)
             except Exception:
                 log(traceback.format_exc())
             await asyncio.sleep(30)  # wall-clock checks, so it catches up after sleep
@@ -285,11 +501,12 @@ def check_new_digests():
     fresh = [(n, d) for n, d in items if n not in known]
     if not fresh:
         return
-    if known and st.get("notify", True):   # don't notify for digests that existed before the first check
+    if known and st.get("notify") != "off":   # don't notify for digests that existed before the first check
         name, d = fresh[0]
         att = [h.get("text", "") for g in d.get("groups") or [] for h in (g.get("highlights") or [])]
-        text = (f"{len(att)} need attention: " + re.sub(r"\*\*", "", att[0])) if att else "No urgent items."
-        notify("New Telegram digest", text[:180])
+        if att or st.get("notify") == "all":
+            text = (f"{len(att)} need attention: " + re.sub(r"\*\*", "", att[0])) if att else "Nothing urgent."
+            notify("New Telegram digest", text[:180])
     st["notified_digests"] = sorted(known | {n for n, _ in items})[-500:]
     save_settings(st)
 
@@ -387,6 +604,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/feedback": lambda: self._feedback(body),
             "/api/settings": lambda: self._save_settings(body),
             "/api/seen": lambda: self._seen(body),
+            "/api/digest/run": lambda: self._run_digest(),
         }
         if p in routes:
             return self._run(routes[p])
@@ -417,15 +635,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def _save_settings(self, body):
         st = load_settings()
-        if "fetch_every_minutes" in body:
-            m = int(body["fetch_every_minutes"])
-            if m not in FETCH_CHOICES:
-                raise UserError("Pick one of the offered intervals.")
-            st["fetch_every_minutes"] = m
-        if "notify" in body:
-            st["notify"] = bool(body["notify"])
+        for key, value in body.items():
+            if key in CHOICES:
+                if isinstance(CHOICES[key][0], int):
+                    value = int(value)
+                if value not in CHOICES[key]:
+                    raise UserError(f"Pick one of the offered options for {key}.")
+                st[key] = value
+            elif key == "digest_daily_at":
+                if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(value)):
+                    raise UserError("Use a time like 08:00.")
+                st[key] = value
         save_settings(st)
         return st
+
+    def _run_digest(self):
+        if TG.digesting:
+            return {"busy": True}
+        TG.submit(TG.run_digest())
+        return {"started": True}
 
     def _seen(self, body):
         name = str(body.get("name", ""))

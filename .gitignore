@@ -10,3 +10,4 @@ __pycache__/
 what-matters.md
 settings.json
 fetch-now
+.digest-state.json

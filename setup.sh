@@ -27,6 +27,8 @@ cat > "$PLIST" <<EOF
     <string>$DIR/app.py</string>
   </array>
   <key>WorkingDirectory</key><string>$DIR</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>$(printf '%s' "$PATH" | sed 's/&/\&amp;/g; s/</\&lt;/g')</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$DIR/logs/app.log</string>

@@ -84,9 +84,29 @@ reads it directly, so there's no copying and pasting.
   Switch to **Work** (or **Codex**), open a folder and choose `TelegramDigest` in their
   home folder, and allow access when asked.
 
-## Step 6: Daily digest
+## Step 6: Automatic digests (recommended)
 
-They just ask: *"Give me my Telegram digest."* Then you:
+The app can write digests by itself, using the person's own AI plan (no API keys), with
+one of these command-line tools. Install the one that matches their plan, then sign in once:
+
+- **Claude plan:** in Terminal run `curl -fsSL https://claude.ai/install.sh | bash`, then
+  run `claude` and sign in with their Claude account. Type `/exit` when done.
+- **ChatGPT account:** in Terminal run `curl -fsSL https://chatgpt.com/codex/install.sh | sh`,
+  then run `codex` and choose *Sign in with ChatGPT*. Press Ctrl+C when done.
+
+Then run the install line from Step 1 again so the app picks the tool up. In the app,
+**Setup → Digests** should now say which tool writes the digests. The defaults are:
+automatically, every 4 hours if there's anything new, covering everything since the previous
+digest, with a notification when something needs attention. Everything there can be
+changed, including "Only when I ask". **Write a digest now** makes one straight away.
+
+If they'd rather not install anything, skip this step: you can write digests yourself
+when they ask (next step).
+
+## Step 7: Asking for a digest
+
+With automatic digests they don't need to do anything. They can also ask you any time:
+*"Give me my Telegram digest."* Then you:
 
 1. Open `HOW-TO-DIGEST.md` in the folder and follow it.
 2. Write the digest in the chat. Each point ends with [↗](link) links that open the

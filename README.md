@@ -32,9 +32,13 @@ Then do everything else in the browser:
   which subgroups to include, "Export now".
 - **Messages**: browse by group → subgroup → day. Every message has
   *Open in Telegram ↗* (opens the app) and *web* (t.me) links.
-- **Digest**: digests your AI assistant writes into `digests/` after reading this folder
-  (instructions for it are in `HOW-TO-DIGEST.md`), per subgroup, every point linking to
-  its source messages.
+- **Digest**: summaries per subgroup, every point linking to its source messages, with
+  a Mac notification when one arrives. They're written either automatically by the app
+  using Claude Code or Codex on your own plan (no API keys), or by your AI assistant when
+  you ask (instructions for it are in `HOW-TO-DIGEST.md`).
+- **Settings** (Setup tab), with defaults: fetch every 2 hours; digests automatic, every 4
+  hours if anything is new, covering everything since the previous digest; notify when
+  something needs attention. `what-matters.md` teaches the digest what needs your attention.
 
 ## Files
 
@@ -44,9 +48,11 @@ Then do everything else in the browser:
 | `exports/YYYY-MM-DD/<group>/messages.jsonl` | the same messages as JSON, with group/subgroup ids and Telegram links |
 | `digests/*.json` | digests written by Claude (shown in the Digest tab) |
 | `selection.json` | which groups / subgroups are exported |
+| `what-matters.md` | what should count as "needs attention" (read and updated by the AI) |
+| `settings.json` | settings from the Setup tab |
 | `.env` | API keys |
 
-`.env`, `exports/`, `digests/`, `selection.json`, logs and state are git-ignored.
+`.env`, `exports/`, `digests/`, `selection.json`, `what-matters.md`, `settings.json`, logs and state are git-ignored.
 
 ## Digest format (for Claude)
 

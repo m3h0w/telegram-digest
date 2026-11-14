@@ -99,6 +99,15 @@ li:hover .fb, li:focus-within .fb, .fb.done { display: inline; }
 .nav-item .dsub { display: block; font-size: 12px; color: var(--faint); font-weight: 400; }
 textarea { font: 14px/1.5 var(--ui); width: 100%; min-height: 260px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); resize: vertical; }
 .inline-select { width: auto; display: inline-block; }
+.opt { display: grid; grid-template-columns: 180px minmax(0, 260px); align-items: center; gap: 14px; margin: 8px 0; }
+.opt > span { color: var(--muted); }
+.side-actions { margin-bottom: 18px; }
+.side-actions .btn { width: 100%; }
+.side-actions .note { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.working { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
+.spin { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--teal); border-radius: 50%; animation: spin 1s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .empty h1 { font-family: var(--read); color: var(--ink); font-size: 24px; margin: 0 0 8px; }
 
 /* transcript */
@@ -180,6 +189,7 @@ input[type=checkbox] { width: auto; flex: none; margin: 0; accent-color: var(--t
   ul.pts { font-size: 17px; }
   .health .htext { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .facts { grid-template-columns: minmax(0, 1fr); }
+  .opt { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .facts dt { margin-top: 6px; }
 }
 </style>
@@ -329,17 +339,44 @@ function health(s) {
   if (!s.selected) return ["warn", "Choose groups to follow"];
   if (s.exporting) return ["ok", "Fetching new messages…"];
   if (s.last_error) return ["bad", "Last fetch failed"];
+  if (s.digest && s.digest.running) return ["ok", "Writing a digest…"];
+  if (s.digest && s.digest.last_ok === false && s.digest.mode === "auto") return ["warn", "Last digest failed"];
   if (!s.last_export) return ["warn", "Waiting for the first fetch"];
   const hours = (Date.now() - new Date(s.last_export)) / 36e5;
   if (hours > (s.interval_hours || 2) + 1.5) return ["warn", `Last fetched ${ago(s.last_export)}`];
   return ["ok", `Up to date, fetched ${ago(s.last_export)}`];
 }
+let WAS_RUNNING = false, POLL = null;
 async function refreshStatus() {
   try { S.status = await api("/api/status"); } catch (e) { S.status = { down: true }; }
   const [cls, text] = health(S.status);
   $("#hdot").className = "dot " + cls;
   $("#htext").textContent = text;
+  const running = !!(S.status.digest && S.status.digest.running);
+  if (running && !POLL) POLL = setInterval(refreshStatus, 4000);
+  if (!running && POLL) { clearInterval(POLL); POLL = null; }
+  if (WAS_RUNNING && !running) {            // a digest just finished
+    S.digestName = null;
+    if (S.tab === "digest") renderDigest();
+    if (S.tab === "setup") renderSetup();
+  }
+  WAS_RUNNING = running;
   return S.status;
+}
+
+const engineReady = () => !!(S.status.digest && S.status.digest.engine);
+async function startDigest() {
+  try { const r = await api("/api/digest/run", {}); if (!r.busy) { S.status.digest = { ...(S.status.digest || {}), running: true }; } }
+  catch (e) { alert(e.message); return; }
+  await refreshStatus();
+  if (S.tab === "digest") renderDigest();
+}
+function digestAction() {
+  const d = S.status.digest || {};
+  if (d.running) return `<div class="working"><span class="spin"></span><span>${esc(d.engine_name || "Your AI")} is writing a digest. This can take a few minutes.</span></div>`;
+  if (!d.engine) return `<p class="note">To get digests here, ask your AI assistant for one, or install Claude Code or Codex to have them written automatically (see Setup).</p>`;
+  return `<button class="btn" data-run>Write a digest now</button>` +
+    (d.last_message ? `<p class="note">${d.last_ok === false ? '<span class="errc">' + esc(d.last_message) + "</span>" : esc(d.last_message)}</p>` : "");
 }
 $("#health").onclick = () => show("setup");
 
@@ -358,9 +395,12 @@ async function renderDigest() {
   const view = $("#view");
   S.digests = await api("/api/digests").catch(() => []);
   if (!S.digests.length) {
+    const d = S.status.digest || {};
     view.innerHTML = `<div class="layout single"><main class="main"><div class="empty">
       <h1>No digest yet</h1>
-      <p>Ask your AI assistant (Claude or ChatGPT, with access to the TelegramDigest folder) for your Telegram digest. It appears here, with every point linked to the messages it came from.</p>
+      ${d.running ? digestAction()
+        : d.engine ? `<p>${esc(d.engine_name)} can write your first digest now. After that, ${d.mode === "auto" ? "new ones arrive automatically (you can change when in Setup)" : "write one whenever you like"}.</p><p>${digestAction()}</p>`
+        : `<p>Ask your AI assistant (Claude or ChatGPT, with access to the TelegramDigest folder) for your Telegram digest, or install Claude Code or Codex so digests are written automatically. It appears here, with every point linked to the messages it came from.</p>`}
       <p><button class="btn ghost" data-goto="messages">Read the messages</button></p></div></main></div>`;
     return;
   }
@@ -444,12 +484,13 @@ function points(bullets, gid, fb) {
   }).join("")}</ul>`;
 }
 
-function convBlock(id, msgs, refs, labels) {
+function convParts(id, msgs, refs, labels) {
   DIGEST_TX[id] = { msgs, refs, labels };
   const open = S.open.has(id);
-  return `<button class="toggle" data-expand="${id}" aria-expanded="${open}">${open ? labels[1] : labels[0]}</button>
-    <div id="${id}-x"${open ? "" : " hidden"}>${open ? transcript(msgs, S.dAll, { refs }) : ""}</div>`;
+  return { btn: `<button class="toggle" data-expand="${id}" aria-expanded="${open}">${open ? labels[1] : labels[0]}</button>`,
+           box: `<div id="${id}-x"${open ? "" : " hidden"}>${open ? transcript(msgs, S.dAll, { refs }) : ""}</div>` };
 }
+function convBlock(id, msgs, refs, labels) { const c = convParts(id, msgs, refs, labels); return c.btn + c.box; }
 
 function drawDigest() {
   const d = S.digest, idx = S.dIdx, secs = digestSections();
@@ -477,8 +518,8 @@ function drawDigest() {
       toc.push({ id, title: "Also active", n: s.rest.length });
       parts.push(`<section class="also" id="${id}"><h2>Also active, not summarised</h2>${s.rest.map(t => {
         const tid = `s${sid++}`;
-        return `<div class="also-row"><span>${esc(t.title)} <span class="muted">(${plural(t.msgs.length, "message", "messages")})</span></span></div>
-          ${convBlock(tid, t.msgs, new Set(), ["Read", "Hide"])}`;
+        const c = convParts(tid, t.msgs, new Set(), ["Read", "Hide"]);
+        return `<div class="also-row"><span>${esc(t.title)} <span class="muted">(${plural(t.msgs.length, "message", "messages")})</span></span>${c.btn}</div>${c.box}`;
       }).join("")}</section>`);
     }
   }
@@ -491,7 +532,7 @@ function drawDigest() {
     <label class="field nav-select"><span>Digest</span><select id="dpick">${list.map(x => `<option value="${esc(x.name)}"${x.name === S.digestName ? " selected" : ""}>${x.new && x.name !== S.digestName ? "• " : ""}${esc(x.title || x.name)} (${esc(rangeShort(x.from, x.to))})</option>`).join("")}</select></label>
     <div class="nav-group">In this digest</div>`;
   $("#view").innerHTML = `<div class="layout">
-    <aside class="side">${pick}<div class="nav-list">${nav}</div>
+    <aside class="side"><div class="side-actions">${digestAction()}</div>${pick}<div class="nav-list">${nav}</div>
       <label class="field nav-select"><span>Section</span><select id="dnav"><option value="">Jump to a section</option>${navSel}</select></label></aside>
     <main class="main">
       <header class="ph"><h1>${esc(d.title || dayLabel(dayKey(d.to)))}</h1>
@@ -513,7 +554,7 @@ async function showNewer(d) {
   if (!box || !msgs.length) return;
   const topics = new Set(msgs.map(m => m.topic || m.group));
   box.innerHTML = `<div class="newer"><span><b>${plural(msgs.length, "new message", "new messages")}</b> in ${plural(topics.size, "subgroup", "subgroups")} since this digest.</span>
-    <span class="muted">Ask your AI for an update, or</span><button class="link" data-since>read them now</button></div>`;
+    ${engineReady() && !S.status.digest.running ? `<button class="link" data-run>Write an update now</button><span class="muted">or</span>` : `<span class="muted">Ask your AI for an update, or</span>`}<button class="link" data-since>read them now</button></div>`;
 }
 
 // ---------- Messages ----------
@@ -612,7 +653,7 @@ function searchResults(idx) {
 
 // ---------- shared clicks ----------
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto],[data-digest],[data-fb],[data-since]");
+  const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto],[data-digest],[data-fb],[data-since],[data-run]");
   if (!t) return;
   const d = t.dataset;
   if (d.jump) {
@@ -649,6 +690,8 @@ document.addEventListener("click", e => {
     if (!f || t.classList.contains("done")) return;
     api("/api/feedback", f).then(() => { t.textContent = "Noted"; t.classList.add("done"); })
       .catch(err => { t.textContent = "Couldn't save"; t.title = err.message; });
+  } else if (t.hasAttribute("data-run")) {
+    t.disabled = true; startDigest();
   } else if (t.hasAttribute("data-since")) {
     S.msgRange = "since"; S.thread = null; S.q = ""; show("messages");
   }
@@ -717,12 +760,12 @@ async function renderSetup() {
       <div class="row"><span>Fetch new messages every</span>
         <select id="every" class="inline-select">${[[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]].map(([v, l]) => `<option value="${v}"${(s.fetch_every_minutes || 120) === v ? " selected" : ""}>${l}</option>`).join("")}</select>
         <span class="muted">while your Mac is awake.</span></div>
-      <div class="row"><label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="notify"> Show a Mac notification when a new digest arrives</label></div>
-      <p class="muted">Digests come from your AI assistant, when you ask for one or on a schedule you set up with it.</p>
+
       <div class="row"><button class="btn" id="exnow" ${s.authorized && !s.exporting ? "" : "disabled"}>${s.exporting ? "Fetching…" : "Fetch now"}</button>
         <button class="btn ghost" id="exre" ${s.authorized && !s.exporting ? "" : "disabled"}>Re-fetch the last 24 hours</button>
         <span id="exmsg" class="muted"></span></div>
     </div>
+    <div class="panel" id="digestset"><h2>Digests</h2><div id="dsettings"><p class="muted">Loading…</p></div></div>
     <div class="panel" id="prefs"><h2>What needs your attention</h2>
       <p class="muted">Your AI reads this before every digest. It also adds to it when you tell it what you care about, or click "Not for me" or "Flag things like this" in a digest.</p>
       <textarea id="prefstext" spellcheck="true">Loading…</textarea>
@@ -749,8 +792,7 @@ async function renderSetup() {
   on("exnow", fetchNow(null));
   on("exre", fetchNow(1));
   $("#every").onchange = async e => { try { await api("/api/settings", { fetch_every_minutes: +e.target.value }); await refreshStatus(); } catch (err) { alertInline(err); } };
-  api("/api/settings").then(st => { $("#notify").checked = !!st.notify; }).catch(() => {});
-  $("#notify").onchange = e => api("/api/settings", { notify: e.target.checked }).catch(() => {});
+  api("/api/settings").then(st => drawDigestSettings(st, s)).catch(e => { $("#dsettings").innerHTML = `<p class="errc">${esc(e.message)}</p>`; });
   api("/api/preferences").then(p => { $("#prefstext").value = p.text; }).catch(e => { $("#prefstext").value = ""; $("#prefsmsg").textContent = e.message; });
   on("saveprefs", async () => {
     try { await api("/api/preferences", { text: $("#prefstext").value }); $("#prefsmsg").textContent = "Saved."; }
@@ -758,6 +800,35 @@ async function renderSetup() {
   });
   if (S.scrollTo) { const el = document.getElementById(S.scrollTo); S.scrollTo = null; if (el) el.scrollIntoView(); }
   if (s.authorized) loadGroups();
+}
+
+function drawDigestSettings(st, s) {
+  const d = s.digest || {}, found = d.found || {};
+  const sel = (key, opts) => `<select data-set="${key}">${opts.map(([v, l]) => `<option value="${v}"${String(st[key]) === String(v) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  const foundNames = Object.entries(found).filter(([, v]) => v).map(([k]) => k === "claude" ? "Claude Code" : "Codex");
+  const auto = st.digest_mode === "auto";
+  const engineNote = d.engine
+    ? `<span class="okc">Digests are written by ${esc(d.engine_name)} on this Mac, using your own ${d.engine === "claude" ? "Claude" : "ChatGPT"} plan.</span>`
+    : `<span class="errc">No AI tool found on this Mac.</span> Install Claude Code (for a Claude plan) or Codex (for a ChatGPT account) and sign in to it once. Your AI assistant can do this for you; the setup guide explains how. Until then, ask your assistant for digests yourself.`;
+  $("#dsettings").innerHTML = `
+    <label class="opt"><span>Make digests</span>${sel("digest_mode", [["auto", "Automatically"], ["manual", "Only when I ask"]])}</label>
+    ${auto ? `<label class="opt"><span>How often</span>${sel("digest_schedule", [["every", "Every few hours"], ["after_fetch", "After every fetch with new messages"], ["daily", "Once a day"]])}</label>` : ""}
+    ${auto && st.digest_schedule === "every" ? `<label class="opt"><span>Every</span>${sel("digest_every_hours", [[1, "hour"], [2, "2 hours"], [4, "4 hours"], [8, "8 hours"], [12, "12 hours"]])}</label>` : ""}
+    ${auto && st.digest_schedule === "daily" ? `<label class="opt"><span>At</span><input type="time" data-set="digest_daily_at" value="${esc(st.digest_daily_at)}"></label>` : ""}
+    ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
+    <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
+    <label class="opt"><span>Written by</span>${sel("digest_engine", [["auto", foundNames.length ? `Whichever is installed (${foundNames[0]})` : "Whichever is installed"], ["claude", "Claude Code" + (found.claude ? "" : " (not installed)")], ["codex", "Codex" + (found.codex ? "" : " (not installed)")]])}</label>
+    <label class="opt"><span>Notify me</span>${sel("notify", [["attention", "When something needs attention"], ["all", "For every new digest"], ["off", "Never"]])}</label>
+    <p>${engineNote}</p>
+    <div class="row">${d.engine ? (d.running ? digestAction() : `<button class="btn" data-run>Write a digest now</button>`) : ""}
+      <span class="muted">${d.last_run ? `Last run ${esc(new Date(d.last_run).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }))}: ` : ""}${d.last_message ? (d.last_ok === false ? `<span class="errc">${esc(d.last_message)}</span>` : esc(d.last_message)) : ""}</span></div>`;
+  $$("#dsettings [data-set]").forEach(el => el.onchange = async () => {
+    try {
+      const st2 = await api("/api/settings", { [el.dataset.set]: el.value });
+      const s2 = await refreshStatus();
+      drawDigestSettings(st2, s2);
+    } catch (e) { alert(e.message); }
+  });
 }
 
 function alertInline(err) { const m = $("#exmsg"); if (m) m.innerHTML = `<span class="errc">${esc(err.message)}</span>`; }
