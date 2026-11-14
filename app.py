@@ -11,8 +11,10 @@ import datetime as dt
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -27,9 +29,76 @@ import export as core
 PORT = int(os.environ.get("TGD_PORT", "8765"))
 UI = core.ROOT / "ui.html"
 DIGESTS = core.ROOT / "digests"
-EXPORT_EVERY_S = 2 * 3600
+PREFS = core.ROOT / "what-matters.md"
+SETTINGS = core.ROOT / "settings.json"
+FETCH_REQUEST = core.ROOT / "fetch-now"   # an AI assistant creates this file to ask for a fetch
 SERVICE_LABELS = {"local.telegram-digest", "com.michal.telegram-digest"}
+FETCH_CHOICES = (30, 60, 120, 240, 480)
 log = core.log
+
+PREFS_TEMPLATE = """# What matters to me
+
+Your AI assistant reads this before writing each digest, and adds to it when you
+tell it what you do or don't care about. Edit it freely.
+
+## Always put in "Needs attention"
+- Anything that mentions me or asks me something directly
+- Requests for help, deadlines, and decisions that affect everyone
+
+## Usually not important
+
+## People and topics I follow closely
+
+## Feedback from the digest
+"""
+
+
+def load_settings():
+    try:
+        st = json.loads(SETTINGS.read_text())
+    except Exception:
+        st = {}
+    st.setdefault("fetch_every_minutes", 120)
+    st.setdefault("notify", True)
+    st.setdefault("last_seen_digest", None)
+    st.setdefault("notified_digests", [])
+    return st
+
+
+def save_settings(st):
+    SETTINGS.write_text(json.dumps(st, indent=1))
+
+
+def fetch_every_s():
+    return int(load_settings()["fetch_every_minutes"]) * 60
+
+
+def load_prefs():
+    if not PREFS.exists():
+        PREFS.write_text(PREFS_TEMPLATE, encoding="utf-8")
+    return PREFS.read_text(encoding="utf-8")
+
+
+def add_feedback(kind, text, topic):
+    label = {"less": "Not important to me", "more": "Flag things like this"}[kind]
+    text = re.sub(r"\*\*", "", re.sub(r"\s+", " ", str(text))).strip()[:300]
+    line = f'- {dt.date.today():%d %b}: {label}: "{text}"' + (f" ({topic})" if topic else "")
+    s = load_prefs().rstrip()
+    if "## Feedback from the digest" not in s:
+        s += "\n\n## Feedback from the digest"
+    PREFS.write_text(s + "\n" + line + "\n", encoding="utf-8")
+
+
+def notify(title, text):
+    """Native macOS notification (no-op elsewhere)."""
+    if sys.platform != "darwin":
+        return
+    q = lambda v: '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    try:
+        subprocess.run(["osascript", "-e", f"display notification {q(text)} with title {q(title)}"],
+                       timeout=10, check=False, capture_output=True)
+    except Exception:
+        pass
 
 
 class Telegram:
@@ -81,8 +150,10 @@ class Telegram:
             "code_sent": self.phone is not None,
             "selected": len(core.load_selection()["groups"]),
             "last_export": st.get("last_export"), "last_count": st.get("last_count"),
-            "next_export": (last + dt.timedelta(seconds=EXPORT_EVERY_S)).isoformat() if last else None,
-            "interval_hours": EXPORT_EVERY_S / 3600,
+            "next_export": (last + dt.timedelta(seconds=fetch_every_s())).isoformat() if last else None,
+            "interval_hours": fetch_every_s() / 3600,
+            "fetch_every_minutes": fetch_every_s() // 60,
+            "fetch_requested": FETCH_REQUEST.exists(),
             "background": os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS or os.getppid() == 1,
             "exporting": self.exporting,
             "last_result": self.last_result, "last_error": self.last_error,
@@ -151,19 +222,27 @@ class Telegram:
             self.exporting = False
 
     async def _scheduler(self):
-        await asyncio.sleep(20)
+        await asyncio.sleep(15)
+        retry_at = 0.0
         while True:
             try:
+                check_new_digests()
+                requested = FETCH_REQUEST.exists()
                 last = core.last_export_time()
-                due = last is None or core.load_state().get("needs_rebuild") or \
-                    (dt.datetime.now(dt.timezone.utc) - last).total_seconds() >= EXPORT_EVERY_S
-                if due and core.has_keys() and core.load_selection()["groups"]:
+                due = requested or last is None or core.load_state().get("needs_rebuild") or \
+                    (dt.datetime.now(dt.timezone.utc) - last).total_seconds() >= fetch_every_s()
+                if due and time.time() >= retry_at and core.has_keys() and core.load_selection()["groups"]:
                     c = await self._client()
                     if await c.is_user_authorized():
-                        await self.export()
+                        if requested:
+                            FETCH_REQUEST.unlink()
+                        try:
+                            await self.export()
+                        except Exception:
+                            retry_at = time.time() + 300  # back off after a failure
             except Exception:
                 log(traceback.format_exc())
-            await asyncio.sleep(300)  # wall-clock check, so it catches up after sleep
+            await asyncio.sleep(30)  # wall-clock checks, so it catches up after sleep
 
 
 class UserError(Exception):
@@ -173,17 +252,46 @@ class UserError(Exception):
 TG = None
 
 
-def list_digests():
+def _read_digests():
     out = []
     if DIGESTS.is_dir():
-        for f in sorted(DIGESTS.glob("*.json"), reverse=True):
+        for f in DIGESTS.glob("*.json"):
             try:
-                d = json.loads(f.read_text(encoding="utf-8"))
-                out.append({"name": f.stem, "from": d.get("from"), "to": d.get("to"),
-                            "title": d.get("title")})
+                out.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
             except Exception:
                 continue
+    out.sort(key=lambda x: (x[1].get("to") or "", x[0]), reverse=True)
     return out
+
+
+def list_digests():
+    st = load_settings()
+    seen = st.get("last_seen_digest")
+    items = _read_digests()
+    seen_to = next((d.get("to") for n, d in items if n == seen), None)
+    out = []
+    for name, d in items:
+        n_att = sum(len(g.get("highlights") or []) for g in d.get("groups") or [])
+        out.append({"name": name, "from": d.get("from"), "to": d.get("to"), "title": d.get("title"),
+                    "attention": n_att, "new": seen is None or (seen_to is not None and (d.get("to") or "") > seen_to)})
+    return out
+
+
+def check_new_digests():
+    """Notify once about each digest that appeared since the app started watching."""
+    st = load_settings()
+    known = set(st.get("notified_digests") or [])
+    items = _read_digests()
+    fresh = [(n, d) for n, d in items if n not in known]
+    if not fresh:
+        return
+    if known and st.get("notify", True):   # don't notify for digests that existed before the first check
+        name, d = fresh[0]
+        att = [h.get("text", "") for g in d.get("groups") or [] for h in (g.get("highlights") or [])]
+        text = (f"{len(att)} need attention: " + re.sub(r"\*\*", "", att[0])) if att else "No urgent items."
+        notify("New Telegram digest", text[:180])
+    st["notified_digests"] = sorted(known | {n for n, _ in items})[-500:]
+    save_settings(st)
 
 
 def parse_time(s, default):
@@ -252,6 +360,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/digests": list_digests,
             "/api/digest": lambda: self._digest(q.get("name", "")),
             "/api/messages": lambda: self._messages(q),
+            "/api/preferences": lambda: {"text": load_prefs()},
+            "/api/settings": load_settings,
         }
         if p in routes:
             return self._run(routes[p])
@@ -273,6 +383,10 @@ class Handler(BaseHTTPRequestHandler):
             "/api/login/reset": lambda: self._login_reset(),
             "/api/selection": lambda: self._save_selection(body),
             "/api/export": lambda: TG.call(TG.export(body.get("rebuild_days"))),
+            "/api/preferences": lambda: self._save_prefs(body),
+            "/api/feedback": lambda: self._feedback(body),
+            "/api/settings": lambda: self._save_settings(body),
+            "/api/seen": lambda: self._seen(body),
         }
         if p in routes:
             return self._run(routes[p])
@@ -285,6 +399,45 @@ class Handler(BaseHTTPRequestHandler):
             raise UserError("api_id should be a number and api_hash 32 hex characters.")
         core.save_env(api_id, api_hash)
         TG.call(TG.reset())
+        return {"ok": True}
+
+    def _save_prefs(self, body):
+        text = str(body.get("text", ""))
+        if len(text) > 50000:
+            raise UserError("That's too long.")
+        PREFS.write_text(text, encoding="utf-8")
+        return {"ok": True}
+
+    def _feedback(self, body):
+        kind = body.get("kind")
+        if kind not in ("less", "more") or not body.get("text"):
+            raise UserError("bad feedback")
+        add_feedback(kind, body["text"], str(body.get("topic") or ""))
+        return {"ok": True}
+
+    def _save_settings(self, body):
+        st = load_settings()
+        if "fetch_every_minutes" in body:
+            m = int(body["fetch_every_minutes"])
+            if m not in FETCH_CHOICES:
+                raise UserError("Pick one of the offered intervals.")
+            st["fetch_every_minutes"] = m
+        if "notify" in body:
+            st["notify"] = bool(body["notify"])
+        save_settings(st)
+        return st
+
+    def _seen(self, body):
+        name = str(body.get("name", ""))
+        if not re.fullmatch(r"[\w\-.]+", name):
+            raise UserError("bad digest name")
+        st = load_settings()
+        items = _read_digests()
+        cur = next((d.get("to") for n, d in items if n == st.get("last_seen_digest")), None)
+        new = next((d.get("to") for n, d in items if n == name), None)
+        if new and (cur is None or new > cur):
+            st["last_seen_digest"] = name
+            save_settings(st)
         return {"ok": True}
 
     def _login_reset(self):

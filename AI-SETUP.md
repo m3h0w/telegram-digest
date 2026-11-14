@@ -93,8 +93,13 @@ They just ask: *"Give me my Telegram digest."* Then you:
    original message in Telegram.
 3. Save it into `digests/`, so it also shows in the app (http://localhost:8765 → Digest).
 
-If you can run scheduled tasks with access to this folder (for example scheduled work in
-the ChatGPT desktop app, or Claude's scheduled tasks), offer to make a digest every morning.
+Digests are updates since the last digest by default, so they can be run as often as
+the person likes. If you can run scheduled tasks with access to this folder (for example
+scheduled work in the ChatGPT desktop app, or Claude's scheduled tasks), offer to make one
+every morning, or every few hours. Each new digest shows a Mac notification.
+
+Ask them what usually matters to them (people, topics, kinds of requests) and write it into
+`what-matters.md`. You'll keep improving it from their feedback.
 
 The **Messages** tab in the app lets them browse everything by group, subgroup and day.
 Every message has *Open in Telegram ↗*.

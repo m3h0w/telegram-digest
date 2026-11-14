@@ -86,6 +86,19 @@ ul.pts li::marker { color: var(--faint); }
 .also h2 { font-size: 15px; margin: 0 0 8px; }
 .also-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
 .empty { color: var(--muted); padding: 60px 0; max-width: 460px; }
+.newer { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px 14px; margin: 0 0 24px; }
+.newer b { font-weight: 600; }
+.attention .head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.attention .head .link { font-size: 13px; }
+.fb { font: 12px var(--ui); background: none; border: 0; padding: 0 4px; margin-left: 6px; color: var(--faint); cursor: pointer; display: none; vertical-align: 2px; white-space: nowrap; }
+li:hover .fb, li:focus-within .fb, .fb.done { display: inline; }
+.fb:hover { color: var(--teal); text-decoration: underline; }
+.fb.done { color: var(--ok); cursor: default; text-decoration: none; }
+@media (hover: none) { .fb { display: inline; } }
+.nav-item .nd { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block; margin-right: 6px; vertical-align: 1px; }
+.nav-item .dsub { display: block; font-size: 12px; color: var(--faint); font-weight: 400; }
+textarea { font: 14px/1.5 var(--ui); width: 100%; min-height: 260px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); resize: vertical; }
+.inline-select { width: auto; display: inline-block; }
 .empty h1 { font-family: var(--read); color: var(--ink); font-size: 24px; margin: 0 0 8px; }
 
 /* transcript */
@@ -160,7 +173,7 @@ input[type=checkbox] { width: auto; flex: none; margin: 0; accent-color: var(--t
   .brand { display: none; }
   .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 18px 16px 60px; }
   .side { position: static; max-height: none; overflow: visible; }
-  .nav-list { display: none; }
+  .nav-list, .side > .nav-group { display: none; }
   .nav-select { display: block; }
   .side .field { margin-bottom: 8px; }
   .ph h1 { font-size: 25px; }
@@ -306,6 +319,7 @@ function flashTo(key) {
 // ---------- state ----------
 const S = { tab: null, status: {}, msgRange: "24h", msgIdx: null, sel: null, thread: null, q: "",
             digests: [], digestName: null, digest: null, dIdx: null, short: new Map(), open: new Set(), dates: [] };
+let FB = {};
 let DIGEST_TX = {};
 
 // ---------- health ----------
@@ -353,9 +367,20 @@ async function renderDigest() {
   if (!S.digests.find(d => d.name === S.digestName)) S.digestName = S.digests[0].name;
   view.innerHTML = `<div class="layout single"><main class="main"><p class="muted">Loading…</p></main></div>`;
   const d = await api("/api/digest?name=" + encodeURIComponent(S.digestName));
-  const msgs = await api(`/api/messages?from=${encodeURIComponent(d.from)}&to=${encodeURIComponent(d.to)}`);
-  S.digest = d; S.dIdx = index(msgs); S.short = shortNames(S.dIdx); S.open = new Set();
+  // also load the day before, so sources and quotes from just before the period resolve
+  const ctxFrom = localISO(new Date(new Date(d.from) - 864e5));
+  const all = await api(`/api/messages?from=${encodeURIComponent(ctxFrom)}&to=${encodeURIComponent(d.to)}`);
+  const start = new Date(d.from);
+  S.digest = d; S.dAll = index(all); S.dIdx = index(all.filter(m => new Date(m.date) >= start));
+  S.short = shortNames(S.dAll); S.open = new Set();
   drawDigest();
+}
+
+function rangeShort(from, to) {
+  const f = new Date(from), t = new Date(to);
+  const day = d => d.toLocaleDateString(undefined, { weekday: "short" });
+  const tm = d => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return f.toDateString() === t.toDateString() ? `${day(t)} ${tm(f)}–${tm(t)}` : `${day(f)} ${tm(f)} to ${day(t)} ${tm(t)}`;
 }
 
 function digestSections() {
@@ -395,7 +420,7 @@ function shortNames(idx) {
 
 // Source links for one point: one pill per sender, with a link per message time.
 function pips(refs, gid) {
-  const items = (refs || []).map(r => ({ r, m: S.dIdx.byId.get(gid + ":" + r) }));
+  const items = (refs || []).map(r => ({ r, m: S.dAll.byId.get(gid + ":" + r) }));
   const found = items.filter(x => x.m).sort((a, b) => (a.m.date < b.m.date ? -1 : 1));
   let html = "";
   for (let i = 0; i < found.length;) {
@@ -410,18 +435,25 @@ function pips(refs, gid) {
   html += items.filter(x => !x.m).map(x => `<span class="pip" style="--h:0"><a href="tg://privatepost?channel=${ch}&post=${esc(x.r)}">#${esc(x.r)}</a></span>`).join("");
   return html;
 }
-const points = (bullets, gid) => `<ul class="pts">${bullets.map(b => `<li>${bold(b.text)}${pips(b.refs, gid)}</li>`).join("")}</ul>`;
+function points(bullets, gid, fb) {
+  return `<ul class="pts">${bullets.map(b => {
+    const id = "f" + Object.keys(FB).length;
+    FB[id] = { kind: fb.kind, text: b.text, topic: fb.topic };
+    const label = fb.kind === "less" ? "Not for me" : "Flag things like this";
+    return `<li>${bold(b.text)}${pips(b.refs, gid)}<button class="fb" data-fb="${id}" title="Your AI uses this to learn what needs your attention">${label}</button></li>`;
+  }).join("")}</ul>`;
+}
 
 function convBlock(id, msgs, refs, labels) {
   DIGEST_TX[id] = { msgs, refs, labels };
   const open = S.open.has(id);
   return `<button class="toggle" data-expand="${id}" aria-expanded="${open}">${open ? labels[1] : labels[0]}</button>
-    <div id="${id}-x"${open ? "" : " hidden"}>${open ? transcript(msgs, S.dIdx, { refs }) : ""}</div>`;
+    <div id="${id}-x"${open ? "" : " hidden"}>${open ? transcript(msgs, S.dAll, { refs }) : ""}</div>`;
 }
 
 function drawDigest() {
   const d = S.digest, idx = S.dIdx, secs = digestSections();
-  DIGEST_TX = {};
+  DIGEST_TX = {}; FB = {};
   const multi = secs.length > 1;
   const nTopics = [...idx.groups.values()].reduce((n, g) => n + g.topics.size, 0);
   const toc = [], parts = [];
@@ -431,13 +463,13 @@ function drawDigest() {
     if (s.highlights.length) {
       const id = `s${sid++}`;
       toc.push({ id, title: "Needs attention", n: s.highlights.length, att: true });
-      parts.push(`<div class="attention" id="${id}"><h2>Needs attention</h2>${points(s.highlights, s.gid)}</div>`);
+      parts.push(`<div class="attention" id="${id}"><div class="head"><h2>Needs attention</h2><button class="link" data-goto="setup:prefs">Change what counts</button></div>${points(s.highlights, s.gid, { kind: "less", topic: "Needs attention" })}</div>`);
     }
     for (const t of s.topics) {
       const id = `s${sid++}`, refs = new Set(t.bullets.flatMap(b => (b.refs || []).map(r => s.gid + ":" + r)));
       toc.push({ id, title: t.title, n: t.msgs.length });
       parts.push(`<section class="topic" id="${id}"><h2><span>${esc(t.title)}</span><span class="count">${plural(t.msgs.length, "message", "messages")}</span></h2>
-        ${points(t.bullets, s.gid)}
+        ${points(t.bullets, s.gid, { kind: "more", topic: t.title })}
         ${t.msgs.length ? convBlock(id, t.msgs, refs, ["Read the conversation", "Hide the conversation"]) : ""}</section>`);
     }
     if (s.rest.length) {
@@ -453,22 +485,44 @@ function drawDigest() {
   const nav = toc.map(x => x.group ? `<div class="nav-group">${esc(x.group)}</div>`
     : `<button class="nav-item${x.att ? " att" : ""}" data-scroll="${x.id}"><span>${esc(x.title)}</span><span class="n">${x.n}</span></button>`).join("");
   const navSel = toc.filter(x => x.id).map(x => `<option value="${x.id}">${esc(x.title)}</option>`).join("");
-  const pick = S.digests.length > 1
-    ? `<label class="field"><span>Digest</span><select id="dpick">${S.digests.map(x => `<option value="${esc(x.name)}"${x.name === S.digestName ? " selected" : ""}>${esc(x.title || x.name)}</option>`).join("")}</select></label>` : "";
+  const list = S.digests.slice(0, 15);
+  const pick = `<div class="nav-group">Digests</div><div class="nav-list">${list.map(x =>
+      `<button class="nav-item${x.name === S.digestName ? " on" : ""}" data-digest="${esc(x.name)}"><span>${x.new && x.name !== S.digestName ? '<span class="nd" title="Not opened yet"></span>' : ""}${esc(x.title || x.name)}<span class="dsub">${esc(rangeShort(x.from, x.to))}</span></span><span class="n" title="Need attention">${x.attention || ""}</span></button>`).join("")}</div>
+    <label class="field nav-select"><span>Digest</span><select id="dpick">${list.map(x => `<option value="${esc(x.name)}"${x.name === S.digestName ? " selected" : ""}>${x.new && x.name !== S.digestName ? "• " : ""}${esc(x.title || x.name)} (${esc(rangeShort(x.from, x.to))})</option>`).join("")}</select></label>
+    <div class="nav-group">In this digest</div>`;
   $("#view").innerHTML = `<div class="layout">
     <aside class="side">${pick}<div class="nav-list">${nav}</div>
       <label class="field nav-select"><span>Section</span><select id="dnav"><option value="">Jump to a section</option>${navSel}</select></label></aside>
     <main class="main">
       <header class="ph"><h1>${esc(d.title || dayLabel(dayKey(d.to)))}</h1>
         <p class="sub">${plural(idx.msgs.length, "message", "messages")} in ${plural(nTopics, "subgroup", "subgroups")}, from ${esc(shortWhen(d.from))} to ${esc(shortWhen(d.to))}.</p></header>
+      <div id="newer"></div>
       ${parts.join("")}
     </main></div>`;
+  showNewer(d);
+  api("/api/seen", { name: S.digestName }).then(() => { const x = S.digests.find(y => y.name === S.digestName); if (x) x.new = false; }).catch(() => {});
   const dp = $("#dpick"); if (dp) dp.onchange = () => { S.digestName = dp.value; renderDigest(); };
   $("#dnav").onchange = e => { const el = document.getElementById(e.target.value); if (el) el.scrollIntoView({ behavior: reduced ? "auto" : "smooth" }); e.target.value = ""; };
 }
 
+async function showNewer(d) {
+  if (!S.digests[0] || S.digests[0].name !== S.digestName) return;   // only for the newest digest
+  const now = new Date();
+  const msgs = await api(`/api/messages?from=${encodeURIComponent(d.to)}&to=${encodeURIComponent(localISO(now))}`).catch(() => []);
+  const box = $("#newer");
+  if (!box || !msgs.length) return;
+  const topics = new Set(msgs.map(m => m.topic || m.group));
+  box.innerHTML = `<div class="newer"><span><b>${plural(msgs.length, "new message", "new messages")}</b> in ${plural(topics.size, "subgroup", "subgroups")} since this digest.</span>
+    <span class="muted">Ask your AI for an update, or</span><button class="link" data-since>read them now</button></div>`;
+}
+
 // ---------- Messages ----------
 function rangeFor(key) {
+  if (key === "since") {
+    const last = S.digests[0];
+    if (last) return { from: new Date(last.to), to: new Date(), label: "since the last digest" };
+    key = "24h";
+  }
   if (key === "24h") { const to = new Date(); return { from: new Date(to - 864e5), to, label: "in the last 24 hours" }; }
   const from = new Date(key + "T00:00:00");
   return { from, to: new Date(from.getTime() + 864e5), label: "on " + dayLabel(key) };
@@ -477,6 +531,7 @@ function rangeFor(key) {
 async function renderMessages() {
   $("#view").innerHTML = `<div class="layout single"><main class="main"><p class="muted">Loading…</p></main></div>`;
   S.dates = await api("/api/dates").catch(() => []);
+  if (!S.digests.length) S.digests = await api("/api/digests").catch(() => []);
   await loadMessages();
 }
 
@@ -496,7 +551,8 @@ async function loadMessages() {
 
 function drawMessages() {
   const idx = S.msgIdx, r = rangeFor(S.msgRange);
-  const rangeOpts = `<option value="24h"${S.msgRange === "24h" ? " selected" : ""}>Last 24 hours</option>` +
+  const rangeOpts = (S.digests.length ? `<option value="since"${S.msgRange === "since" ? " selected" : ""}>Since the last digest</option>` : "") +
+    `<option value="24h"${S.msgRange === "24h" ? " selected" : ""}>Last 24 hours</option>` +
     S.dates.map(d => `<option value="${d}"${S.msgRange === d ? " selected" : ""}>${esc(dayLabel(d))}</option>`).join("");
   let nav = "", navSel = "";
   for (const g of sortedGroups(idx)) {
@@ -556,7 +612,7 @@ function searchResults(idx) {
 
 // ---------- shared clicks ----------
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto]");
+  const t = e.target.closest("[data-jump],[data-thread],[data-back],[data-gid],[data-open],[data-scroll],[data-expand],[data-goto],[data-digest],[data-fb],[data-since]");
   if (!t) return;
   const d = t.dataset;
   if (d.jump) {
@@ -577,13 +633,24 @@ document.addEventListener("click", e => {
   } else if (d.expand) {
     const id = d.expand, box = document.getElementById(id + "-x"), tx = DIGEST_TX[id];
     const opening = box.hidden;
-    if (opening && !box.innerHTML) box.innerHTML = transcript(tx.msgs, S.dIdx, { refs: tx.refs });
+    if (opening && !box.innerHTML) box.innerHTML = transcript(tx.msgs, S.dAll, { refs: tx.refs });
     box.hidden = !opening;
     opening ? S.open.add(id) : S.open.delete(id);
     t.textContent = opening ? tx.labels[1] : tx.labels[0];
     t.setAttribute("aria-expanded", opening);
   } else if (d.goto) {
-    show(d.goto);
+    const [tab, anchor] = d.goto.split(":");
+    show(tab);
+    if (anchor) S.scrollTo = anchor;
+  } else if (d.digest) {
+    S.digestName = d.digest; renderDigest(); window.scrollTo(0, 0);
+  } else if (d.fb) {
+    const f = FB[d.fb];
+    if (!f || t.classList.contains("done")) return;
+    api("/api/feedback", f).then(() => { t.textContent = "Noted"; t.classList.add("done"); })
+      .catch(err => { t.textContent = "Couldn't save"; t.title = err.message; });
+  } else if (t.hasAttribute("data-since")) {
+    S.msgRange = "since"; S.thread = null; S.q = ""; show("messages");
   }
 });
 
@@ -591,7 +658,7 @@ document.addEventListener("click", e => {
 const pop = $("#pop");
 function hidePop() { pop.hidden = true; }
 function showPop(a) {
-  const m = S.dIdx && S.dIdx.byId.get(a.dataset.key);
+  const m = S.dAll && S.dAll.byId.get(a.dataset.key);
   if (!m) return;
   pop.innerHTML = `<div class="meta"><b class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}</b><span>${esc(m.topic || m.group)}, ${hhmm(m.date)}</span></div>
     <div class="body">${m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : ""}${esc(trunc(m.text, 420))}</div>
@@ -647,11 +714,19 @@ async function renderSetup() {
         <dt>Next fetch</dt><dd>${esc(nextText)}</dd>
         ${s.last_error ? `<dt>Problem</dt><dd class="errc">${esc(s.last_error)}</dd>` : ""}
       </dl>
-      <p class="muted">New messages are fetched every ${s.interval_hours || 2} hours while your Mac is awake. Digests come from your AI assistant, when you ask for one or on a schedule you set up with it.</p>
+      <div class="row"><span>Fetch new messages every</span>
+        <select id="every" class="inline-select">${[[30, "30 minutes"], [60, "hour"], [120, "2 hours"], [240, "4 hours"], [480, "8 hours"]].map(([v, l]) => `<option value="${v}"${(s.fetch_every_minutes || 120) === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+        <span class="muted">while your Mac is awake.</span></div>
+      <div class="row"><label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="notify"> Show a Mac notification when a new digest arrives</label></div>
+      <p class="muted">Digests come from your AI assistant, when you ask for one or on a schedule you set up with it.</p>
       <div class="row"><button class="btn" id="exnow" ${s.authorized && !s.exporting ? "" : "disabled"}>${s.exporting ? "Fetching…" : "Fetch now"}</button>
         <button class="btn ghost" id="exre" ${s.authorized && !s.exporting ? "" : "disabled"}>Re-fetch the last 24 hours</button>
         <span id="exmsg" class="muted"></span></div>
     </div>
+    <div class="panel" id="prefs"><h2>What needs your attention</h2>
+      <p class="muted">Your AI reads this before every digest. It also adds to it when you tell it what you care about, or click "Not for me" or "Flag things like this" in a digest.</p>
+      <textarea id="prefstext" spellcheck="true">Loading…</textarea>
+      <div class="row"><button class="btn" id="saveprefs">Save</button><span id="prefsmsg" class="muted"></span></div></div>
     <div class="panel"><h2>Telegram API keys</h2>${step1}<div class="errc" id="e1"></div></div>
     <div class="panel"><h2>Telegram account</h2>${step2}<div class="errc" id="e2"></div></div>
     <div class="panel"><h2>Groups and subgroups</h2><div id="groups">${s.authorized ? `<p class="muted">Loading your groups…</p>` : `<p class="muted">Log in first.</p>`}</div></div>
@@ -673,8 +748,19 @@ async function renderSetup() {
   };
   on("exnow", fetchNow(null));
   on("exre", fetchNow(1));
+  $("#every").onchange = async e => { try { await api("/api/settings", { fetch_every_minutes: +e.target.value }); await refreshStatus(); } catch (err) { alertInline(err); } };
+  api("/api/settings").then(st => { $("#notify").checked = !!st.notify; }).catch(() => {});
+  $("#notify").onchange = e => api("/api/settings", { notify: e.target.checked }).catch(() => {});
+  api("/api/preferences").then(p => { $("#prefstext").value = p.text; }).catch(e => { $("#prefstext").value = ""; $("#prefsmsg").textContent = e.message; });
+  on("saveprefs", async () => {
+    try { await api("/api/preferences", { text: $("#prefstext").value }); $("#prefsmsg").textContent = "Saved."; }
+    catch (e) { $("#prefsmsg").innerHTML = `<span class="errc">${esc(e.message)}</span>`; }
+  });
+  if (S.scrollTo) { const el = document.getElementById(S.scrollTo); S.scrollTo = null; if (el) el.scrollIntoView(); }
   if (s.authorized) loadGroups();
 }
+
+function alertInline(err) { const m = $("#exmsg"); if (m) m.innerHTML = `<span class="errc">${esc(err.message)}</span>`; }
 
 async function loadGroups() {
   const box = $("#groups");
