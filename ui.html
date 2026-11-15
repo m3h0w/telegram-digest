@@ -1338,6 +1338,13 @@ function scheduleSettings(key) {
   return { digest_schedule: key };
 }
 // how messages and digests relate, shown as the two steps they are
+const KEEP = [[3, "3 days"], [7, "1 week"], [14, "2 weeks"], [30, "1 month"], [90, "3 months"], [0, "Never"]];
+const fmtBytes = n => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
+function storageLine(sto) {
+  if (!sto) return "";
+  const since = sto.oldest ? ` (from ${dayLabel(sto.oldest)})` : "";
+  return `On ${HERE()}: ${fmtBytes(sto.messages)} of messages and photos${since}, ${fmtBytes(sto.digests)} of digests.`;
+}
 function flowSteps(s, st, sel) {
   const d = s.digest || {}, auto = st.digest_mode === "auto";
   const last = s.last_export ? `Last done at ${timeOf(s.last_export)}${s.last_count != null ? `, ${s.last_count ? plural(s.last_count, "new message", "new messages") : "nothing new"}` : ""}. ` : "";
@@ -1423,9 +1430,15 @@ function renderSettings(s) {
 
     <section class="panel" id="groupsset"><h2>Groups you follow</h2><div id="groups"><p class="muted">Loading…</p></div></section>
 
+    <section class="panel" id="storage"><h2>Storage</h2>
+      <label class="opt"><span>Delete saved messages and photos after</span>${sel("keep_messages_days", KEEP)}</label>
+      <label class="opt"><span>Delete digests after</span>${sel("keep_digests_days", KEEP)}</label>
+      <p class="muted small">${storageLine(s.storage)} Old things are deleted automatically every few hours. The newest digest is always kept.</p>
+    </section>
+
     <details class="panel advanced"${advOpen}><summary>Advanced</summary>
       <div class="row"><span>Get older messages from Telegram:</span>
-        <select id="olderdays" class="inline-select"><option value="3">last 3 days</option><option value="7">last 7 days</option><option value="31">last month</option></select>
+        <select id="olderdays" class="inline-select">${[[3, "last 3 days"], [7, "last 7 days"], [31, "last month"]].filter(([n]) => n === 3 || !st.keep_messages_days || n <= st.keep_messages_days).map(([n, l]) => `<option value="${n}">${l}</option>`).join("")}</select>
         <button class="btn ghost" id="exre" data-busy="Getting them…">Get them</button></div>
       <dl class="facts">
         <dt>Telegram</dt><dd>${s.authorized ? `Logged in as ${esc(s.me)}` : "Not logged in"}</dd>

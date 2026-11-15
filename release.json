@@ -1,6 +1,6 @@
 {
-  "version": "2026.11.15.3",
-  "notes": "Fixes source links in digests that cite older messages or write sources in an unusual way.",
+  "version": "2026.11.15.4",
+  "notes": "Old messages, photos and digests are now deleted after a week by default. Change it in Settings → Storage.",
   "files": [
     "app.py",
     "export.py",

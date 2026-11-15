@@ -21,6 +21,7 @@ import json
 import os
 import time
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -365,15 +366,39 @@ async def save_photo(client, m, gid):
 
 
 def prune_photos(days=PHOTO_KEEP_DAYS):
+    """Delete photo previews saved more than `days` days ago. Returns how many."""
     if not MEDIA.exists():
-        return
-    cutoff = time.time() - days * 86400
+        return 0
+    cutoff, n = time.time() - days * 86400, 0
     for f in MEDIA.glob("*/*"):
         try:
             if f.is_file() and f.stat().st_mtime < cutoff:
                 f.unlink()
+                n += 1
         except OSError:
             pass
+    return n
+
+
+def delete_days_before(cutoff_day):
+    """Delete saved days older than cutoff_day (a date). Returns how many days went."""
+    n = 0
+    for day in export_dates():
+        if dt.date.fromisoformat(day) < cutoff_day:
+            shutil.rmtree(EXPORTS / day, ignore_errors=True)
+            n += 1
+    legacy = EXPORTS / "_old"            # left over from the first version
+    if legacy.is_dir() and dt.date.fromtimestamp(legacy.stat().st_mtime) < cutoff_day:
+        shutil.rmtree(legacy, ignore_errors=True)
+    if n:                                # we no longer hold anything from before the cutoff
+        start = dt.datetime.combine(cutoff_day, dt.time()).astimezone()
+        st = load_state()
+        cov = st.setdefault("covered_from", {})
+        for gid, iso in list(cov.items()):
+            if dt.datetime.fromisoformat(iso) < start:
+                cov[gid] = start.isoformat(timespec="seconds")
+        save_state(st)
+    return n
 
 
 def md_line(r):
@@ -478,7 +503,6 @@ async def export(client, rebuild_days=None, days_back=None, photos=False):
         MEDIA.mkdir(exist_ok=True)
         if photo_backfill:
             PHOTO_BACKFILL.unlink(missing_ok=True)
-        prune_photos()
         if saved_photos or failed_photos:
             log(f"photos: {saved_photos} saved" + (f", {failed_photos} couldn't be downloaded" if failed_photos else ""))
     summary["photos"] = saved_photos

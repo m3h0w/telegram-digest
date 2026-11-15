@@ -47,6 +47,8 @@ running (they can check http://localhost:8765).
   digest is for wrote it), link (t.me), app_link (tg://)`.
   `topic` is the subgroup name; it's empty for groups without subgroups.
 - Read the folders for every day the period touches, and filter on `date`.
+- Older days may have been deleted to save space (by default after a week; see Settings →
+  Storage in the app). If part of the period isn't there, say so instead of guessing.
 - For updates, read some messages from just before the period too, so replies to
   older messages make sense. Summarise only what's new.
 - **Photos:** when `media` is `[photo]`, a preview is usually saved at

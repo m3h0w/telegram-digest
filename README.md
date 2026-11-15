@@ -46,6 +46,8 @@ Then do everything else in the browser:
 - **Photos**: saved as small previews (about 800 px, kept 30 days), shown in Messages, and
   read by the digest (posters, schedules, screenshots), up to 20 per digest. Switch:
   Settings → Digests → More options.
+- **Storage**: saved messages, photos and digests older than a week are deleted
+  automatically (the newest digest is always kept). Settings → Storage changes both limits.
 - **Digests on your phone**: optional; each digest arrives as a Telegram message from your
   own private bot (set up in two minutes from Settings), with links to the original messages.
 - **Settings** (Setup tab), with defaults: fetch every 2 hours; digests automatic, every 4

@@ -88,7 +88,11 @@ DEFAULTS = {
     "me_name": "",                   # who the digests are for (filled in from the Telegram account)
     "me_aliases": "",                # other names people use for them, comma separated
     "me_account": None,              # Telegram id the name above belongs to
+    "keep_messages_days": 7,         # delete saved messages and photos after this many days (0 = never)
+    "keep_digests_days": 7,          # delete digests after this many days (0 = never; the newest is always kept)
 }
+KEEP_CHOICES = (3, 7, 14, 30, 90, 0)
+CLEANUP_EVERY_S = 6 * 3600
 PHOTO_CAP = 20                       # most photos one digest looks at
 CHOICES = {
     "fetch_every_minutes": FETCH_CHOICES,
@@ -103,6 +107,8 @@ CHOICES = {
     "claude_model": ("", "sonnet", "opus", "haiku", "fable"),
     "claude_effort": ("", "low", "medium", "high", "xhigh", "max"),
     "codex_effort": ("", "minimal", "low", "medium", "high", "xhigh"),
+    "keep_messages_days": KEEP_CHOICES,
+    "keep_digests_days": KEEP_CHOICES,
 }
 
 
@@ -163,6 +169,47 @@ def owner_line(st):
             '. Their own messages have "out": true. Write to them as "you" ("Rosaura asked you to…", "you offered to…"), '
             "never by their name or in the third person. Anything addressed to them, mentioning them, replying to them "
             "or asking them to do something belongs under Needs attention.")
+
+
+def cleanup(st=None):
+    """Delete saved messages, photos and digests older than the settings allow."""
+    st = st or load_settings()
+    today = dt.date.today()
+    gone = {"days": 0, "photos": 0, "digests": 0}
+    keep_m = int(st.get("keep_messages_days") or 0)
+    if keep_m:
+        gone["days"] = core.delete_days_before(today - dt.timedelta(days=keep_m))
+        gone["photos"] = core.prune_photos(keep_m)
+    keep_d = int(st.get("keep_digests_days") or 0)
+    if keep_d and DIGESTS.is_dir():
+        files = sorted(DIGESTS.glob("*.json"), key=lambda f: f.stem)
+        for f in files[:-1]:                 # the newest digest always stays
+            mo = re.match(r"(\d{4}-\d{2}-\d{2})", f.stem)
+            try:
+                day = dt.date.fromisoformat(mo.group(1)) if mo else dt.date.fromtimestamp(f.stat().st_mtime)
+            except ValueError:
+                continue
+            if day < today - dt.timedelta(days=keep_d):
+                f.unlink(missing_ok=True)
+                gone["digests"] += 1
+    dlog = core.ROOT / "logs" / "digest.log"  # keep the AI's run log from growing forever
+    try:
+        if dlog.exists() and dlog.stat().st_size > 1_000_000:
+            data = dlog.read_bytes()[-500_000:]
+            dlog.write_bytes(data[data.find(b"\n=== ") + 1:] if b"\n=== " in data else data)
+    except OSError:
+        pass
+    if any(gone.values()):
+        log(f"Cleaned up: {gone['days']} day(s) of messages, {gone['photos']} photo(s), {gone['digests']} digest(s).")
+    return gone
+
+
+def storage():
+    def size(p):
+        return sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.exists() else 0
+    dates = core.export_dates()
+    return {"messages": size(core.EXPORTS) + size(core.MEDIA), "digests": size(DIGESTS),
+            "oldest": dates[-1] if dates else None}
 
 
 def fetch_every_s():
@@ -558,6 +605,7 @@ class Telegram:
         self.update_info = None       # last answer from GitHub about newer versions
         self.update_error = None
         self.updating = False
+        self.cleaned_at = 0.0
         self.digest_phase = None
         self.last_result = None
         self.last_error = None
@@ -605,7 +653,7 @@ class Telegram:
             "background": os.environ.get("TGD_BACKGROUND") == "1" or os.environ.get("XPC_SERVICE_NAME", "") in SERVICE_LABELS
                           or (not WINDOWS and os.getppid() == 1),
             "os": OS_NAME,
-            "exporting": self.exporting, "api": API_VERSION,
+            "exporting": self.exporting, "api": API_VERSION, "storage": storage(),
             "version": upd.local_release().get("version", "0"),
             "update": {**(self.update_info or {}), "git": upd.is_git_checkout(), "updating": self.updating,
                        "current": upd.local_release().get("version", "0")},
@@ -800,6 +848,19 @@ class Telegram:
             os._exit(75)    # the background runner (service.pyw) starts it again straight away
         os.execv(sys.executable, [sys.executable, CODE_FILES[0]] + sys.argv[1:])
 
+    def maybe_cleanup(self, now=False):
+        """Runs on the event loop and never while fetching, so it can't race the fetch's bookkeeping."""
+        if self.exporting or (not now and time.time() - self.cleaned_at < CLEANUP_EVERY_S):
+            return
+        self.cleaned_at = time.time()
+        try:
+            cleanup()
+        except Exception:
+            log(traceback.format_exc())
+
+    async def cleanup_now(self):
+        self.maybe_cleanup(now=True)
+
     async def _maybe_check_update(self):
         """Ask GitHub about once a day whether a newer version was published."""
         info = self.update_info
@@ -820,6 +881,7 @@ class Telegram:
             try:
                 await self._restart_if_updated()
                 await self._maybe_check_update()
+                self.maybe_cleanup()
                 check_new_digests()
                 requested = FETCH_REQUEST.exists()
                 last = core.last_export_time()
@@ -1229,6 +1291,8 @@ class Handler(BaseHTTPRequestHandler):
         save_settings(st)
         if {"me_name", "me_aliases"} & set(body):
             write_me(st)
+        if {"keep_messages_days", "keep_digests_days"} & set(body):
+            TG.submit(TG.cleanup_now())       # apply a shorter limit straight away
         return st
 
     def _run_digest(self, body):
