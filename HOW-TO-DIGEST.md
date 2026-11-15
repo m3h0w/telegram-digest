@@ -43,6 +43,11 @@ running (they can check http://localhost:8765).
 - Read the folders for every day the period touches, and filter on `date`.
 - For updates, read some messages from just before the period too, so replies to
   older messages make sense. Summarise only what's new.
+- **Photos:** when `media` is `[photo]`, a preview is usually saved at
+  `media/<group_id>/<id>.jpg` (the topic `.md` files show it as `[photo: media/…]`).
+  If you can look at images, open the photos in the period (up to about 20, newest first)
+  and use what they show where it matters: dates, times, places, prices, names, what a
+  poster or screenshot says. Skip photos that add nothing, like selfies or memes.
 
 ## 5. Write the digest
 

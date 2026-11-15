@@ -33,6 +33,9 @@ SELECTION = ROOT / "selection.json"
 LEGACY_GROUPS = ROOT / "groups.txt"
 STATE = ROOT / ".state.json"
 EXPORTS = ROOT / "exports"
+MEDIA = ROOT / "media"                       # photo previews: media/<group id>/<message id>.jpg
+PHOTO_BACKFILL = ROOT / ".photos-backfill"   # present = also fetch photos for recently saved messages
+PHOTO_KEEP_DAYS = 30
 # The login session is a full key to the account, so it lives outside the repo,
 # readable only by you.
 SECRET_DIR = Path.home() / ".config" / "telegram-digest"
@@ -325,13 +328,62 @@ def slug(s):
     return s + "-" if WINDOWS and s in RESERVED else s    # names Windows won't allow as files
 
 
+def photo_rel(gid, mid):
+    return f"media/{gid}/{mid}.jpg"
+
+
+def photo_of(r):
+    """Path (relative to the folder) of a message's saved photo, or None."""
+    if r.get("media") != "[photo]":
+        return None
+    rel = photo_rel(r["group_id"], r["id"])
+    return rel if (ROOT / rel).exists() else None
+
+
+def _preview_size(photo):
+    """The size type of a preview about 800 px across: enough to read a poster, about 100 KB."""
+    sizes = sorted((s for s in getattr(photo, "sizes", []) if getattr(s, "w", 0) and getattr(s, "h", 0)),
+                   key=lambda s: max(s.w, s.h))
+    if not sizes:
+        return None
+    return next((s for s in sizes if max(s.w, s.h) >= 800), sizes[-1]).type
+
+
+async def save_photo(client, m, gid):
+    path = ROOT / photo_rel(gid, m.id)
+    if path.exists():
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.stem + ".part")
+    part.unlink(missing_ok=True)          # a leftover from an interrupted download
+    got = await client.download_media(m, file=str(part), thumb=_preview_size(m.photo))
+    if not got or not os.path.exists(got):
+        return False
+    os.replace(got, path)                 # use the path Telegram's library actually wrote
+    return True
+
+
+def prune_photos(days=PHOTO_KEEP_DAYS):
+    if not MEDIA.exists():
+        return
+    cutoff = time.time() - days * 86400
+    for f in MEDIA.glob("*/*"):
+        try:
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            pass
+
+
 def md_line(r):
     head = f"[{r['date'][11:16]}] #{r['id']} {r['sender']}"
     if r["reply_to"]:
         head += f" ↪#{r['reply_to']}"
     if r["forwarded"]:
         head += " (forwarded)"
-    body = " ".join(x for x in (r["media"], r["text"]) if x) or "[empty]"
+    ph = photo_of(r)
+    media = f"[photo: {ph}]" if ph else r["media"]
+    body = " ".join(x for x in (media, r["text"]) if x) or "[empty]"
     return f"{head}: " + body.replace("\n", "\n    ")
 
 
@@ -365,14 +417,18 @@ def write_day(day, group_title, recs):
     return len(new)
 
 
-async def export(client, rebuild_days=None, days_back=None):
-    """Fetch new messages for the selected groups/topics. Returns a summary dict."""
+async def export(client, rebuild_days=None, days_back=None, photos=False):
+    """Fetch new messages for the selected groups/topics (and their photos). Returns a summary dict."""
     sel = load_selection()["groups"]
     st = load_state()
     if days_back is None:
         days_back = float(load_env().get("DAYS_BACK", 1))
     if st.get("needs_rebuild") and rebuild_days is None:
         rebuild_days = days_back  # one-off after upgrading from the first version
+    photo_backfill = photos and rebuild_days is None and (PHOTO_BACKFILL.exists() or not MEDIA.exists())
+    if photo_backfill:            # photos were just switched on: also get them for the last few days
+        rebuild_days = max(float(days_back), 3)
+    saved_photos = failed_photos = 0
     now = dt.datetime.now(dt.timezone.utc)
     summary = {"groups": {}, "total": 0}
     for gid_s, g in sel.items():
@@ -400,6 +456,11 @@ async def export(client, rebuild_days=None, days_back=None):
             r = record(m, entity, gid, title, topics)
             if r is None or (allowed is not None and r["topic_id"] not in allowed):
                 continue
+            if photos and m.photo:
+                try:
+                    saved_photos += await save_photo(client, m, gid)
+                except Exception:
+                    failed_photos += 1
             by_day.setdefault(r["date"][:10], []).append(r)
         n = sum(write_day(day, title, recs) for day, recs in sorted(by_day.items()))
         if last_id:
@@ -412,6 +473,14 @@ async def export(client, rebuild_days=None, days_back=None):
         summary["groups"][title] = n
         summary["total"] += n
         log(f"{title}: {n} new message(s)")
+    if photos:
+        MEDIA.mkdir(exist_ok=True)
+        if photo_backfill:
+            PHOTO_BACKFILL.unlink(missing_ok=True)
+        prune_photos()
+        if saved_photos or failed_photos:
+            log(f"photos: {saved_photos} saved" + (f", {failed_photos} couldn't be downloaded" if failed_photos else ""))
+    summary["photos"] = saved_photos
     st["last_export"] = now.isoformat(timespec="seconds")
     st["last_count"] = summary["total"]
     st["needs_rebuild"] = False
@@ -480,6 +549,10 @@ def read_messages(start, end):
                         out.append(r)
         day += dt.timedelta(days=1)
     out.sort(key=lambda r: r["date"])
+    for r in out:
+        ph = photo_of(r)
+        if ph:
+            r["photo"] = ph
     return out
 
 

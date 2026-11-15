@@ -43,6 +43,9 @@ Then do everything else in the browser:
   a Mac notification when one arrives. They're written either automatically by the app
   using Claude Code or Codex on your own plan (no API keys), or by your AI assistant when
   you ask (instructions for it are in `HOW-TO-DIGEST.md`).
+- **Photos**: saved as small previews (about 800 px, kept 30 days), shown in Messages, and
+  read by the digest (posters, schedules, screenshots), up to 20 per digest. Switch:
+  Settings → Digests → More options.
 - **Digests on your phone**: optional; each digest arrives as a Telegram message from your
   own private bot (set up in two minutes from Settings), with links to the original messages.
 - **Settings** (Setup tab), with defaults: fetch every 2 hours; digests automatic, every 4

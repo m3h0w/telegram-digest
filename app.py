@@ -82,7 +82,9 @@ DEFAULTS = {
     "claude_effort": "",
     "codex_model": "",               # "" = Codex's own default
     "codex_effort": "",
+    "digest_photos": True,           # save photo previews and let the digest look at them
 }
+PHOTO_CAP = 20                       # most photos one digest looks at
 CHOICES = {
     "fetch_every_minutes": FETCH_CHOICES,
     "notify": ("attention", "all", "off"),
@@ -297,25 +299,53 @@ def model_flags(kind, st):
 OLD_TOOL = re.compile(r"unknown option|unrecognized|unexpected argument|unknown argument", re.I)
 
 
+def photos_in(start, end):
+    """The photos a digest of this period should look at (newest PHOTO_CAP), with who posted them."""
+    with_photo = [r for r in core.read_messages(start, end) if r.get("photo")]
+    return with_photo[-PHOTO_CAP:]
+
+
+def photo_block(recs, attached):
+    lines = []
+    for r in recs:
+        where = r["group"] + (f" › {r['topic']}" if r.get("topic") else "")
+        caption = (r.get("text") or "").replace("\n", " ")[:80]
+        lines.append(f"  {r['photo']}: message #{r['id']} in {where}, by {r['sender']} at {r['date'][11:16]}"
+                     + (f', caption "{caption}"' if caption else ""))
+    how = ("They are also attached to this message, in this order." if attached
+           else "Open each file with your file-reading tool; they are images.")
+    return ("\n- Photos: these messages in the period have a photo saved in this folder. " + how +
+            " Use what a photo shows where it matters: dates, times, places, prices, names, what a poster or"
+            " screenshot says. Work it into the point it belongs to (for example: the poster says the sauna opens"
+            " Friday at 18:00) and cite that message as usual. Skip photos that add nothing, like selfies or memes.\n"
+            + "\n".join(lines))
+
+
 def run_engine(kind, path, start, end):
     prompt = DIGEST_PROMPT.format(start=start.isoformat(timespec="seconds"), end=end.isoformat(timespec="seconds"))
-    extra = model_flags(kind, load_settings())
-    code, out, err = _run_engine(kind, path, prompt, extra)
+    st = load_settings()
+    photos = photos_in(start, end) if st.get("digest_photos") else []
+    images = [r["photo"] for r in photos] if kind == "codex" else []
+    if photos:
+        prompt += photo_block(photos, attached=bool(images))
+    extra = model_flags(kind, st)
+    code, out, err = _run_engine(kind, path, prompt, extra, images)
     if code != 0 and extra and OLD_TOOL.search(err + out):
         # an older Claude Code / Codex that doesn't know these options: run with its defaults
-        code, out, err = _run_engine(kind, path, prompt, [])
+        code, out, err = _run_engine(kind, path, prompt, [], images)
         if code == 0:
             out += f"\n(Your {ENGINE_NAMES[kind]} is too old for the chosen model or effort, so it used its defaults. Updating it fixes this.)"
     return code, out, err
 
 
-def _run_engine(kind, path, prompt, extra):
+def _run_engine(kind, path, prompt, extra, images=()):
     via_stdin = WINDOWS and path.lower().endswith((".cmd", ".bat"))
     if kind == "claude":
         cmd = [path, "-p"] + ([] if via_stdin else [prompt]) + ["--permission-mode", "acceptEdits",
                "--allowedTools", "Read,Write,Edit,Glob,Grep", "--output-format", "text"] + extra
     else:
-        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never"] + extra + ["-" if via_stdin else prompt]
+        attach = [f"--image={p}" for p in images] + ["--"] if images else []   # "--": the prompt is never read as an image
+        cmd = [path, "exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--color", "never"] + extra + attach + ["-" if via_stdin else prompt]
     env = dict(os.environ, PATH=tool_path())
     env.pop("ANTHROPIC_API_KEY", None)   # use the person's subscription, not a pay-as-you-go key
     env.pop("OPENAI_API_KEY", None)
@@ -587,7 +617,8 @@ class Telegram:
         self.exporting = True
         try:
             c = await self._authorized_client()
-            self.last_result = await core.export(c, rebuild_days=rebuild_days)
+            self.last_result = await core.export(c, rebuild_days=rebuild_days,
+                                                 photos=bool(load_settings().get("digest_photos")))
             self.last_error = None
             return self.last_result
         except UserError:
@@ -847,6 +878,19 @@ class Handler(BaseHTTPRequestHandler):
         p = u.path
         if p in ("/", "/index.html"):
             return self._send(200, UI.read_bytes(), "text/html")
+        mp = re.fullmatch(r"/media/(-?\d+)/(\d+)\.jpg", p)
+        if mp:
+            f = core.ROOT / core.photo_rel(mp.group(1), mp.group(2))
+            if not f.is_file():
+                return self._send(404, {"error": "not found"})
+            data = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "private, max-age=86400")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         routes = {
             "/api/status": lambda: TG.call(TG.status()),
             "/api/groups": lambda: TG.call(TG.groups()),
@@ -993,6 +1037,11 @@ class Handler(BaseHTTPRequestHandler):
                 st[key] = value
             elif key in ("onboarded", "digests_chosen"):
                 st[key] = bool(value)
+            elif key == "digest_photos":
+                on = value in (True, 1, "1", "true", "on")
+                if on and not st.get("digest_photos"):
+                    core.PHOTO_BACKFILL.touch()      # fetch photos for the last few days too
+                st[key] = on
             elif key == "codex_model":
                 value = str(value).strip()
                 if not re.fullmatch(r"[A-Za-z0-9._:/-]{0,60}", value):

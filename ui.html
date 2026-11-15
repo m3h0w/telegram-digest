@@ -220,6 +220,10 @@ select[aria-busy="true"] { cursor: progress; opacity: .7; }
 .q b { font-weight: 600; color: hsl(var(--h) var(--name-s) var(--name-l)); margin-right: 4px; }
 a.q:hover { background: var(--teal-soft); }
 .q.missing { cursor: default; border-left-color: var(--line); }
+.ph { display: block; width: fit-content; margin: 4px 0 6px; }
+.ph img { display: block; max-width: min(100%, 340px); max-height: 300px; border-radius: 8px; border: 1px solid var(--line); background: var(--line); }
+.ph:focus-visible img { outline: 2px solid var(--teal); outline-offset: 2px; }
+.popimg { display: block; max-width: 100%; max-height: 180px; border-radius: 6px; margin-bottom: 6px; }
 .media { display: inline-block; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-right: 6px; white-space: nowrap; }
 .mention { color: var(--teal); }
 .rep { background: none; border: 0; padding: 2px 0 0; color: var(--faint); cursor: pointer; font-size: 12.5px; }
@@ -446,7 +450,9 @@ function msgRow(m, first, idx, opt) {
       : `<span class="q missing">Reply to an earlier message</span>`;
   }
   const n = (idx.kids.get(key) || []).length;
-  const media = m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : "";
+  const media = m.photo
+    ? `<a class="ph" href="/${esc(m.photo)}" target="_blank" rel="noopener" title="Open the photo"><img src="/${esc(m.photo)}" loading="lazy" alt="Photo from ${esc(m.sender)}"></a>`
+    : m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : "";
   const head = first ? `<div class="who">${opt.labels ? topicTag(m, opt.withGroup) : ""}<span class="nm" style="--h:${hue(m.sender)}">${esc(m.sender)}</span>${m.forwarded ? '<span class="fwd">forwarded</span>' : ""}</div>` : "";
   return `<div class="m${first ? " first" : ""}${opt.refs && opt.refs.has(key) ? " ref" : ""}" id="${cssId(key)}">
     <div class="t">${hhmm(m.date)}</div>
@@ -947,7 +953,7 @@ function showPop(a) {
   const m = S.dAll && S.dAll.byId.get(a.dataset.key);
   if (!m) return;
   pop.innerHTML = `<div class="meta"><b class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}</b><span>${esc(m.topic || m.group)}, ${hhmm(m.date)}</span></div>
-    <div class="body">${m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : ""}${esc(trunc(m.text, 420))}</div>
+    <div class="body">${m.photo ? `<img class="popimg" src="/${esc(m.photo)}" alt="">` : m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : ""}${esc(trunc(m.text, 420))}</div>
     <div class="hint">Click to open in Telegram</div>`;
   pop.hidden = false;
   const r = a.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
@@ -1352,6 +1358,8 @@ function renderSettings(s) {
       <details class="more"${moreOpen}><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
         <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
+        <label class="opt"><span>Photos</span>${sel("digest_photos", [["true", "Look at photos (up to 20 per digest)"], ["false", "Skip photos"]])}</label>
+        <p class="muted small">Photos are saved on ${HERE()} as smaller previews and kept for 30 days. The digest reads what they show, like a poster's date or a screenshot's text. Each photo adds a few seconds to a digest.</p>
         ${modelOptions(st, st.digest_engine !== "auto" ? st.digest_engine : d.engine, sel)}
       </details>
     </section>
