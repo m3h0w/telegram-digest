@@ -1,6 +1,6 @@
 {
-  "version": "2026.11.15.1",
-  "notes": "Digests now know who they're for: they talk to you as “you” and flag anything addressed to you. See Settings → About you.",
+  "version": "2026.11.15.2",
+  "notes": "Test update: nothing changes, it only checks that updating works.",
   "files": [
     "app.py",
     "export.py",
