@@ -88,6 +88,12 @@ messages and a notification on the computer:
 
 - `from` and `to` are the period (ISO with time zone). `refs` are message `id`s from
   that group. `group_id` and `topic` must match the export.
+- Each `text` is plain prose. Unlike the chat version, put **no links, no `[↗]` marks
+  and no message numbers** in it: the sources go only in `refs`, and the app shows them
+  as coloured name badges. Don't start points with labels like "Needs attention —";
+  the app adds the headings. `**bold**` is fine.
+- Write people's names as they appear in the messages (first name is fine), so the app
+  can colour them like their badges.
 - Title: a short plain name, like "Saturday" for a full day, or "Update, Saturday
   afternoon" for an update.
 

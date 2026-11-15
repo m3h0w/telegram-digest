@@ -284,6 +284,7 @@ Follow HOW-TO-DIGEST.md in this folder exactly, with these specifics:
 - Apply what-matters.md. You may fold lines from its "Feedback from the digest" section into rules, as HOW-TO-DIGEST.md describes.
 - If there are no new messages in the period, write nothing and reply "Nothing new."
 - Otherwise write exactly one digest file in digests/ as described, then reply with one short line saying what you wrote.
+- In the digest file, each "text" is plain prose: no links, no [↗] marks and no message numbers (the sources go only in "refs"), and no labels like "Needs attention —" (the app adds the headings). Write people's names as they appear in the messages.
 - Only read exports/, .state.json, what-matters.md, HOW-TO-DIGEST.md and digests/. Only write in digests/ and what-matters.md."""
 
 
@@ -776,12 +777,50 @@ class UserError(Exception):
 TG = None
 
 
+MD_LINK = re.compile(r"\s*\[([^\]]*)\]\(((?:https?|tg)://[^)\s]+)\)")
+ATT_LABEL = re.compile(r"^\s*\**\s*needs attention\s*\**\s*[\u2014\u2013:\-]+\s*", re.I)
+
+
+def clean_point(p):
+    """Tidy a digest point an AI wrote in chat style: links in the text become sources, labels go."""
+    if not isinstance(p, dict):
+        return p
+    text, refs = str(p.get("text") or ""), []
+    for r in p.get("refs") or []:
+        try:
+            refs.append(int(r))
+        except (TypeError, ValueError):
+            pass
+    def link(mo):
+        label, url = mo.group(1).strip(), mo.group(2)
+        mid = re.search(r"[?&]post=(\d+)", url) or re.search(r"/(\d+)/?(?:[?#].*)?$", url)
+        if mid and int(mid.group(1)) not in refs:
+            refs.append(int(mid.group(1)))
+        keep = re.search(r"[^\W\d_]", label) and label.lower() not in ("link", "source", "src", "here")
+        return (" " + label) if keep else ""
+    text = MD_LINK.sub(link, text)
+    if ATT_LABEL.match(text):
+        text = ATT_LABEL.sub("", text)
+        text = text[:1].upper() + text[1:]
+    text = re.sub(r"\s+([.,;:!?])", r"\1", re.sub(r"[ \t]{2,}", " ", text)).strip()
+    return {**p, "text": text, "refs": refs}
+
+
+def load_digest(f):
+    d = json.loads(f.read_text(encoding="utf-8"))
+    for g in d.get("groups") or []:
+        g["highlights"] = [clean_point(x) for x in g.get("highlights") or []]
+        for t in g.get("topics") or []:
+            t["bullets"] = [clean_point(x) for x in t.get("bullets") or []]
+    return d
+
+
 def _read_digests():
     out = []
     if DIGESTS.is_dir():
         for f in DIGESTS.glob("*.json"):
             try:
-                out.append((f.stem, json.loads(f.read_text(encoding="utf-8"))))
+                out.append((f.stem, load_digest(f)))
             except Exception:
                 continue
     out.sort(key=lambda x: (x[1].get("to") or "", x[0]), reverse=True)
@@ -1100,7 +1139,7 @@ class Handler(BaseHTTPRequestHandler):
         f = DIGESTS / f"{name}.json"
         if not f.exists():
             raise UserError("no such digest")
-        return json.loads(f.read_text(encoding="utf-8"))
+        return load_digest(f)
 
     def _messages(self, q):
         now = dt.datetime.now().astimezone()

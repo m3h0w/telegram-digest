@@ -78,6 +78,7 @@ ul.pts li::marker { color: var(--faint); }
 .pip { font: 12px/1.6 var(--ui); display: inline-flex; align-items: center; gap: 3px; padding: 0 6px 0 7px; margin: 0 0 0 5px; border-radius: 999px;
        border: 1px solid var(--line); background: var(--surface); color: var(--muted); vertical-align: 2px; white-space: nowrap; }
 .pip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h) var(--name-s) var(--dot-l)); margin-right: 2px; }
+.person { font-weight: 600; color: hsl(var(--h) var(--name-s) var(--name-l)); }
 .pip .pn { font-weight: 600; color: hsl(var(--h) var(--name-s) var(--name-l)); margin-right: 2px; }
 .pip a { color: var(--muted); text-decoration: none; padding: 0 2px; border-radius: 4px; font-variant-numeric: tabular-nums; }
 .pip a:hover, .pip a:focus-visible { color: var(--teal); text-decoration: underline; }
@@ -626,6 +627,34 @@ function shortNames(idx) {
   return out;
 }
 
+// People named in a point get the same colour as their badge. Matches a sender's full name,
+// their badge name, or their first name when nobody else in the digest shares it.
+function nameFinder(idx) {
+  const byFirst = new Map(), find = new Map();
+  for (const m of idx.msgs) {
+    if (!m.sender || m.sender === "?") continue;
+    const f = m.sender.split(/\s+/)[0];
+    if (!byFirst.has(f)) byFirst.set(f, new Set());
+    byFirst.get(f).add(m.sender);
+  }
+  for (const [f, names] of byFirst) for (const n of names) {
+    find.set(n, n);
+    const short = S.short.get(n);
+    if (short && !short.endsWith("…")) find.set(short, n);
+    if (names.size === 1 && f.length > 1) find.set(f, n);
+  }
+  const keys = [...find.keys()].sort((a, b) => b.length - a.length).map(k => esc(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return { find, rx: keys.length ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.join("|")})(?![\\p{L}\\p{N}])`, "gu") : null };
+}
+function people(html) {
+  if (!S.dAll) return html;
+  if (!S.names || S.namesFor !== S.dAll) { S.names = nameFinder(S.dAll); S.namesFor = S.dAll; }
+  const { find, rx } = S.names;
+  if (!rx) return html;
+  const unesc = t => t.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return html.replace(rx, hit => `<span class="person" style="--h:${hue(find.get(unesc(hit)))}">${hit}</span>`);
+}
+
 // Source links for one point: one pill per sender, with a link per message time.
 function pips(refs, gid) {
   const items = (refs || []).map(r => ({ r, m: S.dAll.byId.get(gid + ":" + r) }));
@@ -648,7 +677,7 @@ function points(bullets, gid, fb) {
     const id = "f" + Object.keys(FB).length;
     FB[id] = { kind: fb.kind, text: b.text, topic: fb.topic };
     const label = fb.kind === "less" ? "Not for me: don't flag things like this" : "Flag things like this for me";
-    return `<li>${bold(b.text)}${pips(b.refs, gid)}<button class="fb" data-fb="${id}" title="${label}" aria-label="${label}">${fb.kind === "less" ? ICON_LESS : ICON_MORE}</button></li>`;
+    return `<li>${people(bold(b.text))}${pips(b.refs, gid)}<button class="fb" data-fb="${id}" title="${label}" aria-label="${label}">${fb.kind === "less" ? ICON_LESS : ICON_MORE}</button></li>`;
   }).join("")}</ul>`;
 }
 
