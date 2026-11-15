@@ -614,7 +614,10 @@ function digestSections() {
       if (hit) used.add(hit.key);
       topics.push({ title: hit ? hit.title : dt.topic, msgs: hit ? hit.msgs : [], bullets: dt.bullets || [] });
     }
-    const rest = sortedTopics(ig).filter(tp => !used.has(tp.key)).map(tp => ({ title: tp.title, msgs: tp.msgs }));
+    // a subgroup counts as summarised when it has its own section or any point (Needs attention included) cites its messages
+    const cited = new Set([...(dg.highlights || []), ...(dg.topics || []).flatMap(t => t.bullets || [])].flatMap(p => (p.refs || []).map(String)));
+    const rest = sortedTopics(ig).filter(tp => !used.has(tp.key) && !tp.msgs.some(m => cited.has(String(m.id))))
+      .map(tp => ({ title: tp.title, msgs: tp.msgs }));
     out.push({ gid, title: ig.title || dg.title || "", highlights: dg.highlights || [], topics, rest });
   }
   return out;
