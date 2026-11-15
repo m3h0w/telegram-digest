@@ -1,0 +1,8 @@
+{
+  "version": "2026.11.15",
+  "notes": "Photos in digests, names coloured like their badges, cleaner digest text, and updates from inside the app.",
+  "files": ["app.py", "export.py", "update.py", "ui.html", "service.pyw", "setup.sh", "install.sh", "install.ps1",
+            "README.md", "AI-SETUP.md", "HOW-TO-DIGEST.md"],
+  "requirements": ["telethon", "certifi"],
+  "reinstall": false
+}

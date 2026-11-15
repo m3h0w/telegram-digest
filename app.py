@@ -32,10 +32,12 @@ from telethon import errors
 from telethon.utils import get_display_name
 
 import export as core
+import update as upd
 
 PORT = int(os.environ.get("TGD_PORT", "8765"))
 API_VERSION = 4          # the page checks this to spot an app that hasn't restarted after an update
-CODE_FILES = [os.path.abspath(__file__), os.path.abspath(core.__file__)]
+CODE_FILES = [os.path.abspath(__file__), os.path.abspath(core.__file__), os.path.abspath(upd.__file__)]
+UPDATE_EVERY_S = 24 * 3600
 
 
 def code_stamp():
@@ -505,6 +507,9 @@ class Telegram:
         self.exporting = False
         self.digesting = False
         self.code_stamp = code_stamp()
+        self.update_info = None       # last answer from GitHub about newer versions
+        self.update_error = None
+        self.updating = False
         self.digest_phase = None
         self.last_result = None
         self.last_error = None
@@ -553,6 +558,9 @@ class Telegram:
                           or (not WINDOWS and os.getppid() == 1),
             "os": OS_NAME,
             "exporting": self.exporting, "api": API_VERSION,
+            "version": upd.local_release().get("version", "0"),
+            "update": {**(self.update_info or {}), "git": upd.is_git_checkout(), "updating": self.updating,
+                       "current": upd.local_release().get("version", "0")},
             "last_result": self.last_result, "last_error": self.last_error,
         }
         st_ = load_settings()
@@ -725,7 +733,7 @@ class Telegram:
 
     async def _restart_if_updated(self):
         """After an update replaces the program files, restart into the new version by itself."""
-        if code_stamp() == self.code_stamp or self.digesting or self.exporting:
+        if code_stamp() == self.code_stamp or self.digesting or self.exporting or self.updating:
             return
         if WINDOWS and os.environ.get("TGD_BACKGROUND") != "1":
             return      # started by hand on Windows: nothing would start it again
@@ -742,12 +750,26 @@ class Telegram:
             os._exit(75)    # the background runner (service.pyw) starts it again straight away
         os.execv(sys.executable, [sys.executable, CODE_FILES[0]] + sys.argv[1:])
 
+    async def _maybe_check_update(self):
+        """Ask GitHub about once a day whether a newer version was published."""
+        info = self.update_info
+        if info and time.time() - info.get("checked", 0) < UPDATE_EVERY_S:
+            return
+        if self.update_error and time.time() - self.update_error[0] < 3600:
+            return
+        try:
+            self.update_info = await asyncio.to_thread(upd.check, SSL_CTX)
+            self.update_error = None
+        except Exception as e:
+            self.update_error = (time.time(), str(e))
+
     async def _scheduler(self):
         await asyncio.sleep(15)
         retry_at = 0.0
         while True:
             try:
                 await self._restart_if_updated()
+                await self._maybe_check_update()
                 check_new_digests()
                 requested = FETCH_REQUEST.exists()
                 last = core.last_export_time()
@@ -972,12 +994,42 @@ class Handler(BaseHTTPRequestHandler):
             "/api/bot/test": lambda: self._bot_test(),
             "/api/bot/latest": lambda: self._bot_latest(),
             "/api/bot/disconnect": lambda: self._bot_disconnect(),
+            "/api/update/check": lambda: self._update_check(),
+            "/api/update/apply": lambda: self._update_apply(),
         }
         if p in routes:
             return self._run(routes[p])
         self._send(404, {"error": "not found"})
 
     # --- route bodies ---
+    def _update_check(self):
+        try:
+            TG.update_info = upd.check(SSL_CTX)
+            TG.update_error = None
+        except Exception as e:
+            raise UserError(f"Couldn't check for updates: {e}")
+        return TG.update_info
+
+    def _update_apply(self):
+        if TG.updating:
+            return {"busy": True}
+        TG.updating = True
+        try:
+            res = upd.apply(SSL_CTX)
+        except subprocess.CalledProcessError:
+            raise UserError("Couldn't install a package the new version needs. Check the internet connection and try again.")
+        except Exception as e:
+            raise UserError(f"The update didn't install: {e}. Nothing was changed; the current version keeps running.")
+        finally:
+            TG.updating = False
+        if res.get("updated"):
+            log(f"Updated to version {res['version']}.")
+            TG.update_info = None
+            res["restarting"] = bool(res.get("code_changed")) and not (WINDOWS and os.environ.get("TGD_BACKGROUND") != "1")
+            if res["restarting"]:   # restart right after this answer has gone out
+                threading.Timer(1.0, lambda: TG.submit(TG._restart_if_updated())).start()
+        return res
+
     def _keys(self, body):
         api_id, api_hash = str(body.get("api_id", "")).strip(), str(body.get("api_hash", "")).strip()
         if not re.fullmatch(r"\d{3,12}", api_id) or not re.fullmatch(r"[0-9a-f]{32}", api_hash):

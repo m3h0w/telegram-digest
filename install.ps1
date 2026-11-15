@@ -13,7 +13,7 @@ $ProgressPreference = 'SilentlyContinue'      # downloads are much faster withou
 
 $ZipUrl = 'https://github.com/m3h0w/telegram-digest/archive/refs/heads/main.zip'
 $Dest   = Join-Path $HOME 'TelegramDigest'
-$Files  = @('app.py', 'export.py', 'ui.html', 'service.pyw', 'install.ps1', 'README.md', 'AI-SETUP.md', 'HOW-TO-DIGEST.md', '.env.example')
+$Files  = @('app.py', 'export.py', 'update.py', 'release.json', 'ui.html', 'service.pyw', 'install.ps1', 'README.md', 'AI-SETUP.md', 'HOW-TO-DIGEST.md', '.env.example')
 $Port   = 8765
 
 function Say($text) { Write-Host "-> $text" -ForegroundColor Cyan }

@@ -134,6 +134,11 @@ a.btn { display: inline-block; text-decoration: none; }
 .ehelp .howto .quote { margin: 6px 0; }
 .updatebar { max-width: 1180px; margin: 12px auto 0; padding: 10px 14px; border-radius: 8px; background: var(--sun-soft); color: var(--ink); border: 1px solid var(--sun); }
 .updatebar[hidden] { display: none; }
+.newversion { max-width: 1180px; margin: 12px auto 0; padding: 10px 14px; border-radius: 8px; background: var(--teal-soft); color: var(--ink); border: 1px solid var(--teal);
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.newversion[hidden] { display: none; }
+.newversion .row { margin: 0; }
+.newversion .quote { margin: 6px 0 0; }
 .flow { margin: 10px 0 14px; padding: 0; list-style: none; counter-reset: flow; display: grid; gap: 10px; }
 .flow li { counter-increment: flow; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 2px 10px; }
 .flow li::before { content: counter(flow); grid-row: span 2; width: 22px; height: 22px; border-radius: 50%; background: var(--teal); color: var(--surface); font: 600 12.5px/22px var(--ui); text-align: center; margin-top: 1px; }
@@ -303,6 +308,7 @@ input[type=checkbox] { width: auto; flex: none; margin: 0; accent-color: var(--t
 </div></header>
 
 <div id="updatebar" class="updatebar" hidden></div>
+<div id="newversion" class="newversion" hidden></div>
 <div id="view"></div>
 <div id="pop" hidden></div>
 
@@ -502,6 +508,7 @@ async function refreshStatus() {
   try { S.status = await api("/api/status"); } catch (e) { S.status = { down: true }; }
   const old = !S.status.down && (S.status.api || 0) < NEEDS_API, bar = $("#updatebar");
   bar.hidden = !old;
+  drawNewVersion(S.status);
   if (old) bar.innerHTML = `<b>Almost updated.</b> This page is new, but the app running in the background is still the old version, so some settings won't save. To finish, run the install line from the setup guide again. It keeps your settings and Telegram login.`;
   const [cls, text] = health(S.status);
   $("#hdot").className = "dot " + cls;
@@ -1411,6 +1418,7 @@ function renderSettings(s) {
         <dt>Telegram</dt><dd>${s.authorized ? `Logged in as ${esc(s.me)}` : "Not logged in"}</dd>
         <dt>Background</dt><dd>${s.background ? "Runs in the background and starts when you log in" : "Not running in the background"}</dd>
         <dt>Folder</dt><dd>TelegramDigest in your home folder</dd>
+        <dt>Version</dt><dd>${esc(s.version || "unknown")}${s.update && s.update.git ? " (developer copy, updated with git)" : ` <button class="link" id="chkupdate" data-busy="Checking…">Check for updates</button><span class="muted" id="updmsg"></span>`}</dd>
       </dl>
       <div class="row"><button class="link" id="chkeys">Use different Telegram API codes</button></div>
       <div id="keysform"></div>
@@ -1450,6 +1458,14 @@ function renderSettings(s) {
   // groups
   drawFollowed();
   // keys
+  on("chkupdate", async () => {
+    try {
+      const r = await api("/api/update/check", {});
+      store.set("skipVersion", "");
+      await refreshStatus();
+      $("#updmsg").textContent = r.available ? ` Version ${r.latest} is available; see the notice at the top.` : " You have the latest version.";
+    } catch (e) { $("#updmsg").innerHTML = ` <span class="errc">${esc(e.message)}</span>`; }
+  });
   on("chkeys", () => {
     $("#keysform").innerHTML = `<div class="row"><input type="text" id="apiid" placeholder="App api_id" style="max-width:160px"><input type="password" id="apihash" placeholder="App api_hash">
       <button class="btn" id="savekeys" data-busy="Checking…">Save</button><span class="errc" id="kerr"></span></div>`;
@@ -1539,6 +1555,41 @@ function toggleTopic(g, tid, on) {
 }
 
 const NEEDS_API = 4;   // matches API_VERSION in app.py
+
+// ---------- "a new version is available" ----------
+const INSTALL_LINE = () => WIN() ? "irm https://raw.githubusercontent.com/m3h0w/telegram-digest/main/install.ps1 | iex"
+                                 : "curl -fsSL https://raw.githubusercontent.com/m3h0w/telegram-digest/main/install.sh | bash";
+function drawNewVersion(s) {
+  const box = $("#newversion"), u = (s && s.update) || {};
+  if (box.dataset.state === "restarting") return;
+  const show = !!u.available && !u.git && store.get("skipVersion") !== u.latest;
+  box.hidden = !show;
+  if (!show || box.dataset.v === u.latest) return;
+  box.dataset.v = u.latest;
+  box.innerHTML = u.reinstall
+    ? `<div class="nv-text"><b>A new version is available.</b> ${esc(u.notes)} This one needs the install line once more (it keeps your settings):<p class="quote">${esc(INSTALL_LINE())}</p></div>
+       <div class="row"><button class="link" id="nvlater">Later</button></div>`
+    : `<div class="nv-text"><b>A new version is available.</b> ${esc(u.notes)}</div>
+       <div class="row"><button class="btn" id="nvupdate" data-busy="Updating…">Update now</button><button class="link" id="nvlater">Later</button><span class="errc" id="nverr"></span></div>`;
+  on("nvlater", () => { store.set("skipVersion", u.latest); box.hidden = true; });
+  on("nvupdate", runUpdate);
+}
+async function runUpdate() {
+  const box = $("#newversion");
+  try {
+    const r = await api("/api/update/apply", {});
+    if (r.busy) return;
+    if (!r.updated) { box.hidden = true; return; }
+    box.dataset.state = "restarting";
+    box.innerHTML = `<div class="nv-text working"><span class="spin"></span><span>Updated to version ${esc(r.version)}. ${r.restarting ? "Restarting…" : "Reloading…"}</span></div>`;
+    if (!r.restarting) return location.reload();
+    for (let i = 0; i < 60; i++) {             // wait for the restarted app, then load the new page
+      await new Promise(ok => setTimeout(ok, 1500));
+      try { const st = await api("/api/status"); if (st.version === r.version) return location.reload(); } catch (e) { }
+    }
+    box.innerHTML = `<div class="nv-text">Updated. If this page looks unchanged, reload it.</div>`;
+  } catch (e) { const el = $("#nverr"); if (el) el.textContent = e.message; else alert(e.message); }
+}
 
 // ---------- start ----------
 (async () => {

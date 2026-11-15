@@ -88,3 +88,21 @@ rm -r ~/.config/telegram-digest
 ```
 
 Then end the "telegram-digest (Mac)" session in Telegram → Settings → Devices.
+
+## Publishing an update
+
+Installed copies check `release.json` on GitHub about once a day. When its `version` is
+higher than theirs, the app shows "A new version is available" with an **Update now**
+button: it downloads that version, checks the code compiles, installs any missing package,
+swaps the files in and restarts itself. Settings, the Telegram login and saved messages
+are kept. To publish:
+
+1. Bump `version` in `release.json` (a date works: `2026.11.20`; add `.1` for a second
+   release on the same day) and write one line of `notes` (shown to people as-is).
+2. List any new file in `files`. Set `"reinstall": true` only when an update needs the
+   install line run again (for example a change to the background service setup).
+3. Push. Pushes that don't bump the version reach nobody.
+
+Copies that are git checkouts never update themselves. Installs from before version
+2026.11.15 need the install line run once to get the button.
+
