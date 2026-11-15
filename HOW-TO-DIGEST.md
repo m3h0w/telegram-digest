@@ -100,8 +100,9 @@ messages and a notification on the computer:
   and no message numbers** in it: the sources go only in `refs`, and the app shows them
   as coloured name badges. Don't start points with labels like "Needs attention —";
   the app adds the headings. `**bold**` is fine.
-- Write people's names as they appear in the messages (first name is fine), so the app
-  can colour them like their badges.
+- Call people by their first name ("Jorge"). Only when two people in the period share a
+  first name, use first name and surname for those two. Spell names as in the messages,
+  so the app can colour them like their badges.
 - Title: a short plain name, like "Saturday" for a full day, or "Update, Saturday
   afternoon" for an update.
 

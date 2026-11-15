@@ -90,6 +90,7 @@ DEFAULTS = {
     "me_account": None,              # Telegram id the name above belongs to
     "keep_messages_days": 7,         # delete saved messages and photos after this many days (0 = never)
     "keep_digests_days": 7,          # delete digests after this many days (0 = never; the newest is always kept)
+    "name_style": "first",           # first: first names, full name only when two people share one | full
 }
 KEEP_CHOICES = (3, 7, 14, 30, 90, 0)
 CLEANUP_EVERY_S = 6 * 3600
@@ -107,6 +108,7 @@ CHOICES = {
     "claude_model": ("", "sonnet", "opus", "haiku", "fable"),
     "claude_effort": ("", "low", "medium", "high", "xhigh", "max"),
     "codex_effort": ("", "minimal", "low", "medium", "high", "xhigh"),
+    "name_style": ("first", "full"),
     "keep_messages_days": KEEP_CHOICES,
     "keep_digests_days": KEEP_CHOICES,
 }
@@ -158,6 +160,32 @@ def remember_me(user):
         write_me(st)
     elif not ME_FILE.exists():
         write_me(st)
+
+
+def name_line(st):
+    if st.get("name_style") == "full":
+        return '\n- Call people by their full name as it appears in the messages ("Jorge Marques").'
+    return ('\n- Call people by their first name only ("Jorge", not "Jorge Marques"). Only when two people in the '
+            "period share a first name, use first name and surname for those two.")
+
+
+def namer(senders, full=False):
+    """Display names (first name unless shared, or full) and a function that rewrites a text to use them."""
+    by_first = {}
+    for n in senders:
+        if n and n != "?":
+            by_first.setdefault(n.split()[0], set()).add(n)
+    show, find = {}, {}
+    for f, names in by_first.items():
+        for n in names:
+            show[n] = n if full or len(names) > 1 else f
+            find[n] = n
+            if len(names) == 1 and len(f) > 1:
+                find[f] = n
+    if not find:
+        return show, (lambda t: t)
+    rx = re.compile(r"(?<!\w)(" + "|".join(re.escape(k) for k in sorted(find, key=len, reverse=True)) + r")(?!\w)")
+    return show, (lambda t: rx.sub(lambda mo: show[find[mo.group(1)]], t))
 
 
 def owner_line(st):
@@ -377,7 +405,7 @@ Follow HOW-TO-DIGEST.md in this folder exactly, with these specifics:
 - Apply what-matters.md. You may fold lines from its "Feedback from the digest" section into rules, as HOW-TO-DIGEST.md describes.
 - If there are no new messages in the period, write nothing and reply "Nothing new."
 - Otherwise write exactly one digest file in digests/ as described, then reply with one short line saying what you wrote.
-- In the digest file, each "text" is plain prose: no links, no [↗] marks and no message numbers (the sources go only in "refs"), and no labels like "Needs attention —" (the app adds the headings). Write people's names as they appear in the messages.
+- In the digest file, each "text" is plain prose: no links, no [↗] marks and no message numbers (the sources go only in "refs"), and no labels like "Needs attention —" (the app adds the headings). Spell people's names as they appear in the messages.
 - Only read exports/, .state.json, what-matters.md, HOW-TO-DIGEST.md and digests/. Only write in digests/ and what-matters.md."""
 
 
@@ -418,7 +446,7 @@ def photo_block(recs, attached):
 def run_engine(kind, path, start, end):
     prompt = DIGEST_PROMPT.format(start=start.isoformat(timespec="seconds"), end=end.isoformat(timespec="seconds"))
     st = load_settings()
-    prompt += owner_line(st)
+    prompt += owner_line(st) + name_line(st)
     photos = photos_in(start, end) if st.get("digest_photos") else []
     images = [r["photo"] for r in photos] if kind == "codex" else []
     if photos:
@@ -518,14 +546,15 @@ def digest_to_telegram(d):
     if missing:
         msgs.update(core.find_messages(missing))
     h = lambda t: html.escape(str(t), quote=False)
-    rich = lambda t: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", h(t))
+    show, rename = namer({m["sender"] for m in msgs.values()}, load_settings().get("name_style") == "full")
+    rich = lambda t: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", h(rename(str(t))))
 
     def refs(gid, ids):
         parts, last = [], None
         for i in ids or []:
             m = msgs.get((str(gid), i))
             if m:
-                who = m["sender"].split()[0] if m["sender"] else "?"
+                who = show.get(m["sender"]) or (m["sender"] or "?").split()[0]
                 label = (who + " " if m["sender"] != last else "") + m["date"][11:16]
                 last, link = m["sender"], m["link"]
             else:

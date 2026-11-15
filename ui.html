@@ -620,6 +620,10 @@ function digestSections() {
   return out;
 }
 
+// How people are named in digests: first name, or the full name when someone else in the
+// digest shares that first name (default); or always the full name (Settings).
+const fullNames = () => !!(SETTINGS && SETTINGS.name_style === "full");
+const displayName = (full, shared) => fullNames() || shared ? full : full.split(/\s+/)[0];
 function shortNames(idx) {
   const byFirst = new Map(), out = new Map();
   for (const m of idx.msgs) {
@@ -628,8 +632,7 @@ function shortNames(idx) {
     byFirst.get(f).add(m.sender);
   }
   for (const [f, names] of byFirst) for (const n of names) {
-    const parts = n.split(/\s+/);
-    out.set(n, trunc(names.size > 1 && parts[1] ? `${f} ${parts[1][0]}.` : f, 16));
+    out.set(n, trunc(displayName(n, names.size > 1), 24));
   }
   return out;
 }
@@ -644,22 +647,23 @@ function nameFinder(idx) {
     if (!byFirst.has(f)) byFirst.set(f, new Set());
     byFirst.get(f).add(m.sender);
   }
+  const show = new Map();                     // full name -> how the digest shows it
   for (const [f, names] of byFirst) for (const n of names) {
-    find.set(n, n);
+    find.set(n, n); show.set(n, displayName(n, names.size > 1));
     const short = S.short.get(n);
     if (short && !short.endsWith("…")) find.set(short, n);
     if (names.size === 1 && f.length > 1) find.set(f, n);
   }
   const keys = [...find.keys()].sort((a, b) => b.length - a.length).map(k => esc(k).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return { find, rx: keys.length ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.join("|")})(?![\\p{L}\\p{N}])`, "gu") : null };
+  return { find, show, rx: keys.length ? new RegExp(`(?<![\\p{L}\\p{N}])(${keys.join("|")})(?![\\p{L}\\p{N}])`, "gu") : null };
 }
 function people(html) {
   if (!S.dAll) return html;
-  if (!S.names || S.namesFor !== S.dAll) { S.names = nameFinder(S.dAll); S.namesFor = S.dAll; }
-  const { find, rx } = S.names;
+  if (!S.names || S.namesFor !== S.dAll || S.namesFull !== fullNames()) { S.names = nameFinder(S.dAll); S.namesFor = S.dAll; S.namesFull = fullNames(); }
+  const { find, show, rx } = S.names;
   if (!rx) return html;
   const unesc = t => t.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-  return html.replace(rx, hit => `<span class="person" style="--h:${hue(find.get(unesc(hit)))}">${hit}</span>`);
+  return html.replace(rx, hit => { const who = find.get(unesc(hit)); return `<span class="person" style="--h:${hue(who)}">${esc(show.get(who) || unesc(hit))}</span>`; });
 }
 
 // Source links for one point: one pill per sender, with a link per message time.
@@ -1408,6 +1412,7 @@ function renderSettings(s) {
       <details class="more"${moreOpen}><summary>More options</summary>
         ${auto ? `<label class="opt"><span>Only if there are at least</span>${sel("digest_min_new", [[1, "1 new message"], [3, "3 new messages"], [5, "5 new messages"], [10, "10 new messages"], [20, "20 new messages"]])}</label>` : ""}
         <label class="opt"><span>Each digest covers</span>${sel("digest_period", [["since_last", "Everything since the previous digest"], ["last_24h", "The last 24 hours"]])}</label>
+        <label class="opt"><span>Names</span>${sel("name_style", [["first", "First names (full name only if two people share one)"], ["full", "Full names"]])}</label>
         <label class="opt"><span>Photos</span>${sel("digest_photos", [["true", "Look at photos (up to 20 per digest)"], ["false", "Skip photos"]])}</label>
         <p class="muted small">Photos are saved on ${HERE()} as smaller previews and kept for 30 days. The digest reads what they show, like a poster's date or a screenshot's text. Each photo adds a few seconds to a digest.</p>
         ${modelOptions(st, st.digest_engine !== "auto" ? st.digest_engine : d.engine, sel)}

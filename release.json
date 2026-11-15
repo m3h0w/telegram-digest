@@ -1,6 +1,6 @@
 {
-  "version": "2026.11.15.4",
-  "notes": "Old messages, photos and digests are now deleted after a week by default. Change it in Settings → Storage.",
+  "version": "2026.11.15.5",
+  "notes": "Digests use first names (full names only when two people share one). Prefer full names? Settings → Digests → More options → Names.",
   "files": [
     "app.py",
     "export.py",
