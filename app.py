@@ -85,6 +85,9 @@ DEFAULTS = {
     "codex_model": "",               # "" = Codex's own default
     "codex_effort": "",
     "digest_photos": True,           # save photo previews and let the digest look at them
+    "me_name": "",                   # who the digests are for (filled in from the Telegram account)
+    "me_aliases": "",                # other names people use for them, comma separated
+    "me_account": None,              # Telegram id the name above belongs to
 }
 PHOTO_CAP = 20                       # most photos one digest looks at
 CHOICES = {
@@ -119,6 +122,47 @@ def load_settings():
 
 def save_settings(st):
     core.write_atomic(SETTINGS, json.dumps(st, indent=1))
+
+
+ME_FILE = core.ROOT / "me.json"
+
+
+def aliases(st):
+    return [a.strip() for a in re.split(r"[,\n;]+", st.get("me_aliases") or "") if a.strip()]
+
+
+def write_me(st):
+    """me.json tells any AI reading this folder who the digests are for."""
+    if st.get("me_name"):
+        core.write_atomic(ME_FILE, json.dumps({"name": st["me_name"], "also_called": aliases(st),
+                                               "telegram_username": st.get("me_username") or None,
+                                               "note": "Digests are for this person: write to them as \"you\". "
+                                                       "Their own messages have \"out\": true."},
+                                              indent=1, ensure_ascii=False))
+
+
+def remember_me(user):
+    """Fill in who the digests are for from the logged-in account (again if the account changed)."""
+    st = load_settings()
+    if st.get("me_account") != user.id or not st.get("me_name"):
+        if st.get("me_account") not in (None, user.id):
+            st["me_aliases"] = ""                    # a different person logged in
+        st.update(me_name=get_display_name(user), me_account=user.id, me_username=user.username or "")
+        save_settings(st)
+        write_me(st)
+    elif not ME_FILE.exists():
+        write_me(st)
+
+
+def owner_line(st):
+    name = st.get("me_name")
+    if not name:
+        return ""
+    aka = aliases(st)
+    return (f"\n- This digest is for {name}" + (f" (also called {', '.join(aka)})" if aka else "") +
+            '. Their own messages have "out": true. Write to them as "you" ("Rosaura asked you to…", "you offered to…"), '
+            "never by their name or in the third person. Anything addressed to them, mentioning them, replying to them "
+            "or asking them to do something belongs under Needs attention.")
 
 
 def fetch_every_s():
@@ -327,6 +371,7 @@ def photo_block(recs, attached):
 def run_engine(kind, path, start, end):
     prompt = DIGEST_PROMPT.format(start=start.isoformat(timespec="seconds"), end=end.isoformat(timespec="seconds"))
     st = load_settings()
+    prompt += owner_line(st)
     photos = photos_in(start, end) if st.get("digest_photos") else []
     images = [r["photo"] for r in photos] if kind == "codex" else []
     if photos:
@@ -581,7 +626,9 @@ class Telegram:
                 out["authorized"] = await c.is_user_authorized()
                 if out["authorized"]:
                     if self.me is None:
-                        self.me = get_display_name(await c.get_me())
+                        user = await c.get_me()
+                        self.me = get_display_name(user)
+                        remember_me(user)
                     out["me"] = self.me
             except Exception as e:
                 out["last_error"] = f"Can't reach Telegram: {e}"
@@ -1133,6 +1180,13 @@ class Handler(BaseHTTPRequestHandler):
                 if on and not st.get("digest_photos"):
                     core.PHOTO_BACKFILL.touch()      # fetch photos for the last few days too
                 st[key] = on
+            elif key in ("me_name", "me_aliases"):
+                value = re.sub(r"\s+", " ", str(value)).strip()
+                if len(value) > (80 if key == "me_name" else 200):
+                    raise UserError("That's too long.")
+                if key == "me_name" and not value:
+                    raise UserError("Enter your name.")
+                st[key] = value
             elif key == "codex_model":
                 value = str(value).strip()
                 if not re.fullmatch(r"[A-Za-z0-9._:/-]{0,60}", value):
@@ -1143,6 +1197,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise UserError("Use a time like 08:00.")
                 st[key] = value
         save_settings(st)
+        if {"me_name", "me_aliases"} & set(body):
+            write_me(st)
         return st
 
     def _run_digest(self, body):

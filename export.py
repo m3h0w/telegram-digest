@@ -316,6 +316,7 @@ def record(m, entity, gid, group_title, topics):
         "media": media_label(m),
         "reply_to": reply,
         "forwarded": bool(getattr(m, "fwd_from", None)),
+        "out": bool(getattr(m, "out", False)),      # written by the person this digest is for
         "link": web,
         "app_link": app,
     }

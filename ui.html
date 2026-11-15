@@ -673,7 +673,8 @@ function pips(refs, gid) {
       const m = found[i].m;
       links.push(`<a href="${esc(m.app_link)}" data-key="${esc(gid + ":" + m.id)}" aria-label="${esc(m.sender)} at ${hhmm(m.date)}, open in Telegram">${hhmm(m.date)}</a>`);
     }
-    html += `<span class="pip" style="--h:${hue(who)}"><span class="pn">${esc(S.short.get(who) || who)}</span>${links.join("")}</span>`;
+    const mine = found[i - 1].m.out || (SETTINGS && SETTINGS.me_name && who === SETTINGS.me_name);
+    html += `<span class="pip" style="--h:${hue(who)}"><span class="pn">${mine ? "You" : esc(S.short.get(who) || who)}</span>${links.join("")}</span>`;
   }
   const ch = esc(String(gid).replace(/^-100/, ""));
   html += items.filter(x => !x.m).map(x => `<span class="pip" style="--h:0"><a href="tg://privatepost?channel=${ch}&post=${esc(x.r)}">#${esc(x.r)}</a></span>`).join("");
@@ -1115,6 +1116,9 @@ function renderDigestStep(s) {
       ${d.found && d.found.claude && d.found.codex ? `<label class="opt"><span>Written by</span><select id="wengine">
           <option value="auto">Claude Code (automatic choice)</option><option value="claude">Claude Code, always</option><option value="codex">Codex</option></select></label>` : ""}
       <label class="check"><input type="checkbox" id="wnotify" checked> Notify me on ${HERE()} when something needs my attention</label>
+      <label class="field pref"><span class="plabel">What do people in the groups call you? (optional)</span>
+        <input type="text" id="waka" placeholder="${esc(((S.status && S.status.me) || "").split(" ")[0] || "Your nickname")}${S.status && S.status.me ? ", or a nickname" : ""}" autocomplete="off"></label>
+      <p class="muted small">Digests talk to you as “you” and flag anything addressed to you.</p>
       <label class="field pref"><span class="plabel">Anything that should always need your attention? (optional)</span>
         <textarea id="walways" rows="3" placeholder="One per line, for example: kitchen shifts, the sauna, anything from Rosaura"></textarea></label>
       <p class="muted">You can change all of this any time in Settings.</p>
@@ -1140,7 +1144,9 @@ function renderDigestStep(s) {
         await api("/api/preferences", { text: prefsText(p, document.createElement("div")) });
       }
       const eng = $("#wengine") ? $("#wengine").value : "auto";
+      const aka = $("#waka") ? $("#waka").value.trim() : "";
       const r = await api("/api/settings", { digests_chosen: true, digest_mode: mode, digest_engine: eng, notify: $("#wnotify").checked ? "attention" : "off",
+                                             ...(aka ? { me_aliases: aka } : {}),
                                              ...(mode === "auto" ? scheduleSettings($("#wsched").value) : {}) });
       if (!r.digests_chosen) throw new Error("The app running in the background is an older version and didn't save this. Run the install line from the setup guide again, then try once more.");
       await api("/api/digest/run", {});
@@ -1401,6 +1407,12 @@ function renderSettings(s) {
     </section>
 
     <section class="panel" id="phone"><h2>Digests on your phone</h2><div id="botbox"></div></section>
+
+    <section class="panel" id="me"><h2>About you</h2>
+      <label class="opt"><span>Your name</span><input type="text" data-set="me_name" value="${esc(st.me_name || s.me || "")}" autocomplete="off"></label>
+      <label class="opt"><span>Also called</span><input type="text" data-set="me_aliases" value="${esc(st.me_aliases || "")}" placeholder="Nicknames people use for you, like Nessa" autocomplete="off"></label>
+      <p class="muted small">Digests talk to you as “you”, and anything addressed to you, under any of these names, goes under Needs attention. Your name comes from your Telegram account.</p>
+    </section>
 
     <section class="panel" id="prefs"><h2>What needs your attention</h2>
       <p class="muted">In your own words. The digest uses this to decide what goes under “Needs attention”. It also learns from the small buttons at the end of each digest point: the circle means “not for me”, the flag means “flag things like this”.</p>

@@ -4,7 +4,12 @@ This folder belongs to Telegram Digest, a local app that saves a read-only copy 
 the Telegram groups its owner picked. When they ask for a digest, or a scheduled
 task asks you for one, do the following. Don't ask them to copy or paste anything.
 
-## 1. Read what matters to them
+## 1. Read who it's for and what matters to them
+
+`me.json` names the person the digest is for (and other names people use for them).
+Write to them as "you" ("Rosaura asked you to…", "you offered to…"), never by their name
+or in the third person. Their own messages have `"out": true`. Anything addressed to them,
+mentioning them, replying to them or asking them to do something goes under Needs attention.
 
 Read `what-matters.md` first and apply it, above all to **Needs attention**.
 
@@ -38,7 +43,8 @@ running (they can check http://localhost:8765).
 
 - `exports/YYYY-MM-DD/<group>/messages.jsonl` has one JSON object per line:
   `id, date (ISO, local time), group_id, group, topic_id, topic, sender, text, media,
-  reply_to (id of the message it replies to), forwarded, link (t.me), app_link (tg://)`.
+  reply_to (id of the message it replies to), forwarded, out (true when the person the
+  digest is for wrote it), link (t.me), app_link (tg://)`.
   `topic` is the subgroup name; it's empty for groups without subgroups.
 - Read the folders for every day the period touches, and filter on `date`.
 - For updates, read some messages from just before the period too, so replies to

@@ -1,8 +1,22 @@
 {
-  "version": "2026.11.15",
-  "notes": "Photos in digests, names coloured like their badges, cleaner digest text, and updates from inside the app.",
-  "files": ["app.py", "export.py", "update.py", "ui.html", "service.pyw", "setup.sh", "install.sh", "install.ps1",
-            "README.md", "AI-SETUP.md", "HOW-TO-DIGEST.md"],
-  "requirements": ["telethon", "certifi"],
+  "version": "2026.11.15.1",
+  "notes": "Digests now know who they're for: they talk to you as “you” and flag anything addressed to you. See Settings → About you.",
+  "files": [
+    "app.py",
+    "export.py",
+    "update.py",
+    "ui.html",
+    "service.pyw",
+    "setup.sh",
+    "install.sh",
+    "install.ps1",
+    "README.md",
+    "AI-SETUP.md",
+    "HOW-TO-DIGEST.md"
+  ],
+  "requirements": [
+    "telethon",
+    "certifi"
+  ],
   "reinstall": false
 }
