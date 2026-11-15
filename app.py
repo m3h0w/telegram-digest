@@ -467,6 +467,9 @@ def digest_to_telegram(d):
     if start:
         for m in core.read_messages(start - dt.timedelta(days=1), end + dt.timedelta(minutes=1)):
             msgs[(str(m["group_id"]), m["id"])] = m
+    missing = {k for k in digest_refs(d) if k not in msgs}
+    if missing:
+        msgs.update(core.find_messages(missing))
     h = lambda t: html.escape(str(t), quote=False)
     rich = lambda t: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", h(t))
 
@@ -855,11 +858,20 @@ def clean_point(p):
     if not isinstance(p, dict):
         return p
     text, refs = str(p.get("text") or ""), []
-    for r in p.get("refs") or []:
-        try:
-            refs.append(int(r))
-        except (TypeError, ValueError):
-            pass
+    for r in p.get("refs") or []:          # numbers, "#22317", "22317", links or {"id": 22317}
+        if isinstance(r, dict):
+            r = r.get("id") or r.get("message_id") or r.get("link")
+        if isinstance(r, bool) or r is None:
+            continue
+        if isinstance(r, int):
+            n = r
+        else:
+            mo = re.search(r"[?&]post=(\d+)", str(r)) or re.search(r"(\d{2,})(?!.*\d)", str(r))
+            if not mo:
+                continue
+            n = int(mo.group(1))
+        if n not in refs:
+            refs.append(n)
     def link(mo):
         label, url = mo.group(1).strip(), mo.group(2)
         mid = re.search(r"[?&]post=(\d+)", url) or re.search(r"/(\d+)/?(?:[?#].*)?$", url)
@@ -875,9 +887,27 @@ def clean_point(p):
     return {**p, "text": text, "refs": refs}
 
 
+def digest_refs(d):
+    out = set()
+    for g in d.get("groups") or []:
+        pts = list(g.get("highlights") or []) + [b for t in g.get("topics") or [] for b in t.get("bullets") or []]
+        out |= {(str(g.get("group_id")), r) for p in pts for r in (p.get("refs") or []) if isinstance(r, int)}
+    return out
+
+
+def norm_gid(g, known):
+    """Match a group id however an AI wrote it (1861687789, -1001861687789, a number) to a followed group."""
+    bare = lambda x: re.sub(r"^-?(100)?", "", str(x).strip())
+    if g in (None, "") and len(known) == 1:
+        return known[0]
+    return next((k for k in known if bare(k) == bare(g)), g)
+
+
 def load_digest(f):
     d = json.loads(f.read_text(encoding="utf-8"))
+    known = list(core.load_selection()["groups"])
     for g in d.get("groups") or []:
+        g["group_id"] = norm_gid(g.get("group_id"), known)
         g["highlights"] = [clean_point(x) for x in g.get("highlights") or []]
         for t in g.get("topics") or []:
             t["bullets"] = [clean_point(x) for x in t.get("bullets") or []]
@@ -1247,7 +1277,9 @@ class Handler(BaseHTTPRequestHandler):
         f = DIGESTS / f"{name}.json"
         if not f.exists():
             raise UserError("no such digest")
-        return load_digest(f)
+        d = load_digest(f)
+        d["sources"] = {f"{k[0]}:{k[1]}": m for k, m in core.find_messages(digest_refs(d)).items()}
+        return d
 
     def _messages(self, q):
         now = dt.datetime.now().astimezone()

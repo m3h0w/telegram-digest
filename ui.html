@@ -664,7 +664,8 @@ function people(html) {
 
 // Source links for one point: one pill per sender, with a link per message time.
 function pips(refs, gid) {
-  const items = (refs || []).map(r => ({ r, m: S.dAll.byId.get(gid + ":" + r) }));
+  const src = (S.digest && S.digest.sources) || {};
+  const items = (refs || []).map(r => ({ r, m: S.dAll.byId.get(gid + ":" + r) || src[gid + ":" + r] }));
   const found = items.filter(x => x.m).sort((a, b) => (a.m.date < b.m.date ? -1 : 1));
   let html = "";
   for (let i = 0; i < found.length;) {
@@ -987,7 +988,7 @@ document.addEventListener("click", e => {
 const pop = $("#pop");
 function hidePop() { pop.hidden = true; }
 function showPop(a) {
-  const m = S.dAll && S.dAll.byId.get(a.dataset.key);
+  const m = S.dAll && (S.dAll.byId.get(a.dataset.key) || ((S.digest && S.digest.sources) || {})[a.dataset.key]);
   if (!m) return;
   pop.innerHTML = `<div class="meta"><b class="who" style="--h:${hue(m.sender)}">${esc(m.sender)}</b><span>${esc(m.topic || m.group)}, ${hhmm(m.date)}</span></div>
     <div class="body">${m.photo ? `<img class="popimg" src="/${esc(m.photo)}" alt="">` : m.media ? `<span class="media">${esc(m.media.replace(/^\[|\]$/g, ""))}</span>` : ""}${esc(trunc(m.text, 420))}</div>

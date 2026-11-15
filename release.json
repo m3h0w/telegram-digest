@@ -1,6 +1,6 @@
 {
-  "version": "2026.11.15.2",
-  "notes": "Test update: nothing changes, it only checks that updating works.",
+  "version": "2026.11.15.3",
+  "notes": "Fixes source links in digests that cite older messages or write sources in an unusual way.",
   "files": [
     "app.py",
     "export.py",

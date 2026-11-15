@@ -520,6 +520,28 @@ def coverage_start():
     return max(starts)
 
 
+def find_messages(keys, max_days=120):
+    """Saved messages for (group_id, id) pairs, wherever they were saved (newest days first)."""
+    want = {(str(g), int(i)) for g, i in keys}
+    found = {}
+    for day in export_dates()[:max_days]:
+        if len(found) == len(want):
+            break
+        for jl in (EXPORTS / day).glob("*/messages.jsonl"):
+            for line in jl.read_text(encoding="utf-8").splitlines():
+                try:
+                    r = json.loads(line)
+                    k = (str(r["group_id"]), int(r["id"]))
+                except Exception:
+                    continue
+                if k in want and k not in found:
+                    ph = photo_of(r)
+                    if ph:
+                        r["photo"] = ph
+                    found[k] = r
+    return found
+
+
 def export_dates():
     if not EXPORTS.exists():
         return []
