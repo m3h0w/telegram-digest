@@ -46,7 +46,15 @@ def newer(a, b):
 
 
 def is_git_checkout():
-    return (ROOT / ".git").exists()
+    """A developer copy: this folder, or a folder above it (below the home folder), is a git repository."""
+    home = Path.home().resolve()
+    here = ROOT.resolve()
+    for p in [here, *here.parents]:
+        if p == home or p == p.parent:
+            break
+        if (p / ".git").exists():
+            return True
+    return False
 
 
 def _get(url, ctx, limit):

@@ -11,3 +11,9 @@ what-matters.md
 settings.json
 fetch-now
 .digest-state.json
+media/
+me.json
+.photos-backfill
+.update-*/
+*.tmp
+*.part
